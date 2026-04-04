@@ -516,9 +516,10 @@ body {
 }
 
 .welcome-quote-zh {
-  font-family: var(--font-sans);
-  font-size: 14px;
+  font-family: "Songti SC", "STSong", Georgia, serif;
+  font-size: 15px;
   color: var(--text-dim);
+  letter-spacing: 0.06em;
   margin-bottom: 36px; /* gap before info block */
 }
 
@@ -621,5 +622,18 @@ body {
   .topbar {
     padding-left: 20px; /* non-macOS or small screen */
   }
+}
+
+/* ============================================================
+   Immersive full-screen mode — topbar hidden
+   ============================================================ */
+body.immersive .topbar {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+body.immersive .reader .article {
+  padding-top: 56px; /* reduced top padding without topbar */
 }
 

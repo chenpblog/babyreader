@@ -245,6 +245,14 @@
        forKey:@"BRWindowFrame"];
 }
 
+- (void)windowDidEnterFullScreen:(NSNotification *)notification {
+  [self evaluateJS:@"if (window.appHost && window.appHost.setImmersive) window.appHost.setImmersive(true);"];
+}
+
+- (void)windowDidExitFullScreen:(NSNotification *)notification {
+  [self evaluateJS:@"if (window.appHost && window.appHost.setImmersive) window.appHost.setImmersive(false);"];
+}
+
 // ---------------------------------------------------------------------------
 // MARK: File operations
 

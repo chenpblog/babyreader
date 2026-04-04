@@ -514,7 +514,11 @@ window.appHost = {
 
   zoomIn()    { zoomLevel = Math.min(200, zoomLevel + 10); applyZoom(); },
   zoomOut()   { zoomLevel = Math.max(60, zoomLevel - 10);  applyZoom(); },
-  zoomReset() { zoomLevel = 100; applyZoom(); }
+  zoomReset() { zoomLevel = 100; applyZoom(); },
+
+  setImmersive(on) {
+    document.body.classList.toggle('immersive', !!on);
+  }
 };
 
 /* ============================================================
