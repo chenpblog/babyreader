@@ -10,7 +10,8 @@ const state = {
   mode: 'read',        // 'read' | 'edit'
   currentPath: null,
   currentName: null,
-  content: ''
+  content: '',
+  contentType: 'text'   // 'text' | 'epub'
 };
 
 /* --- Native Bridge --- */
@@ -184,6 +185,62 @@ function escapeHtml(str) {
 }
 
 /* ============================================================
+   EPUB Parser
+   ============================================================ */
+async function parseEpub(base64data) {
+  const zip = await JSZip.loadAsync(base64data, { base64: true });
+
+  // 1. Find OPF path from META-INF/container.xml
+  const containerXml = await zip.file('META-INF/container.xml').async('text');
+  const opfMatch = containerXml.match(/full-path="([^"]+\.opf)"/i);
+  if (!opfMatch) throw new Error('Cannot find OPF file in EPUB');
+  const opfPath = opfMatch[1];
+  const opfDir  = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+
+  // 2. Parse OPF to get spine order
+  const opfXml = await zip.file(opfPath).async('text');
+
+  // Build manifest: id → href
+  const manifest = {};
+  const manifestRe = /<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*/gi;
+  let m;
+  while ((m = manifestRe.exec(opfXml)) !== null) {
+    manifest[m[1]] = m[2];
+  }
+
+  // Get spine order (idref list)
+  const spineRe = /<itemref\s[^>]*idref="([^"]+)"/gi;
+  const spineIds = [];
+  while ((m = spineRe.exec(opfXml)) !== null) {
+    spineIds.push(m[1]);
+  }
+
+  // 3. Read each chapter XHTML and extract body content
+  const chapters = [];
+  for (const id of spineIds) {
+    const href = manifest[id];
+    if (!href) continue;
+    const fullPath = opfDir + href;
+    const file = zip.file(fullPath) || zip.file(href);
+    if (!file) continue;
+
+    const xhtml = await file.async('text');
+    // Extract body content
+    const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+    const bodyContent = bodyMatch ? bodyMatch[1] : xhtml;
+    // Strip namespace attributes and xml:lang etc
+    const cleaned = bodyContent
+      .replace(/\s+xmlns(?::\w+)?="[^"]*"/g, '')
+      .replace(/\s+xml:\w+="[^"]*"/g, '')
+      .replace(/<img[^>]*>/gi, '')  // skip broken image refs
+      .replace(/<image[^>]*>/gi, '');
+    chapters.push(cleaned);
+  }
+
+  return chapters.join('\n<hr class="chapter-break">\n');
+}
+
+/* ============================================================
    Marked Configuration
    ============================================================ */
 function configureMarked() {
@@ -211,9 +268,14 @@ function renderArticle() {
     return;
   }
 
-  // Render content
-  const html = preprocessCustomBlocks(state.content);
-  article.innerHTML = html;
+  if (state.contentType === 'epub') {
+    // EPUB content is already HTML — render directly
+    article.innerHTML = state.content;
+  } else {
+    // Markdown — run through preprocessor + marked
+    const html = preprocessCustomBlocks(state.content);
+    article.innerHTML = html;
+  }
 }
 
 function renderPreview() {
@@ -242,6 +304,10 @@ function setMode(mode) {
     // Flush editor content before switching — only if coming from edit mode
     if (prevMode === 'edit' && editor) {
       state.content = editor.value;
+      // Auto-save to disk when leaving edit mode
+      if (state.isNative && state.currentPath) {
+        sendNative('save');
+      }
     }
 
     reader.style.display          = '';
@@ -293,7 +359,7 @@ function applyZoom() {
 function openFileBrowser() {
   const input = document.createElement('input');
   input.type   = 'file';
-  input.accept = '.md,.txt,text/markdown,text/plain';
+  input.accept = '.md,.txt,.epub,text/markdown,text/plain,application/epub+zip';
 
   input.onchange = (e) => {
     const file = e.target.files[0];
@@ -359,7 +425,9 @@ function setupKeyboard() {
 
       case 'e':
         e.preventDefault();
-        setMode(state.mode === 'read' ? 'edit' : 'read');
+        if (state.contentType !== 'epub') {
+          setMode(state.mode === 'read' ? 'edit' : 'read');
+        }
         break;
 
       case '=':
@@ -388,20 +456,33 @@ function setupKeyboard() {
    appHost API — called by native layer
    ============================================================ */
 window.appHost = {
-  receiveDocument({ path, name, content }) {
-    state.currentPath = path;
-    state.currentName = name;
-    state.content     = content;
+  async receiveDocument({ path, name, type, content, data }) {
+    state.currentPath  = path;
+    state.currentName  = name;
+    state.contentType  = (type === 'epub') ? 'epub' : 'text';
 
     const fileNameEl = document.getElementById('fileName');
     if (fileNameEl) fileNameEl.textContent = name;
 
-    renderArticle();
+    if (type === 'epub' && data) {
+      // Show loading state
+      const article = document.getElementById('article');
+      article.innerHTML = '<p style="color:var(--text-dim);padding:80px 40px;">正在解析 EPUB…</p>';
+
+      try {
+        state.content = await parseEpub(data);
+      } catch (err) {
+        state.content = `<p style="color:var(--accent)">EPUB 解析失败：${err.message}</p>`;
+      }
+    } else {
+      state.content = content || '';
+    }
+
     setMode('read');
+    renderArticle();
   },
 
   notifySaved({ path, name } = {}) {
-    // Update state if Save As provided new path
     if (path) state.currentPath = path;
     if (name) state.currentName = name;
 
@@ -419,14 +500,15 @@ window.appHost = {
   },
 
   getContent() {
-    // Called by native to fetch current content before saving
     if (state.mode === 'edit') {
       state.content = document.getElementById('editor')?.value || state.content;
     }
-    return state.content;
+    return state.contentType === 'epub' ? '' : state.content;
   },
 
   toggleEditMode() {
+    // Don't allow editing EPUB files
+    if (state.contentType === 'epub') return;
     setMode(state.mode === 'read' ? 'edit' : 'read');
   },
 

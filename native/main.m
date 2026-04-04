@@ -178,6 +178,27 @@
   // Web layer sends "ready" when fully initialized.
 }
 
+- (void)webView:(WKWebView *)webView
+    decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
+                    decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+  NSURL *url = navigationAction.request.URL;
+
+  // Allow local file loads (initial page load)
+  if ([url isFileURL]) {
+    decisionHandler(WKNavigationActionPolicyAllow);
+    return;
+  }
+
+  // For any external URL (http/https), open in default browser
+  if ([url.scheme isEqualToString:@"http"] || [url.scheme isEqualToString:@"https"]) {
+    [[NSWorkspace sharedWorkspace] openURL:url];
+    decisionHandler(WKNavigationActionPolicyCancel);
+    return;
+  }
+
+  decisionHandler(WKNavigationActionPolicyAllow);
+}
+
 // ---------------------------------------------------------------------------
 // MARK: NSWindowDelegate
 
@@ -192,35 +213,61 @@
   return @[
     [UTType typeWithFilenameExtension:@"md"],
     [UTType typeWithFilenameExtension:@"markdown"],
+    [UTType typeWithFilenameExtension:@"epub"],
     UTTypePlainText
   ];
 }
 
 - (void)openFileAtURL:(NSURL *)url {
-  NSError  *error   = nil;
-  NSString *content = [NSString stringWithContentsOfURL:url
-                                           usedEncoding:NULL
-                                                  error:&error];
-  if (!content) {
-    [self showError:@"Cannot Open File"
-             detail:error.localizedDescription ?: @"Unknown error reading the file."];
-    return;
-  }
+  NSString *ext = url.pathExtension.lowercaseString;
 
   self.currentFileURL        = url;
   self.window.title          = url.lastPathComponent;
   self.window.representedURL = url;
 
-  NSDictionary *doc = @{
-    @"path":    url.path,
-    @"name":    url.lastPathComponent,
-    @"content": content
-  };
-
-  if (self.webReady) {
-    [self sendFunction:@"receiveDocument" payload:doc];
+  if ([ext isEqualToString:@"epub"]) {
+    // Read binary file and base64 encode for the web layer
+    NSError *error = nil;
+    NSData  *data  = [NSData dataWithContentsOfURL:url options:0 error:&error];
+    if (!data) {
+      [self showError:@"Cannot Open File"
+               detail:error.localizedDescription ?: @"Unknown error reading the file."];
+      return;
+    }
+    NSString *base64 = [data base64EncodedStringWithOptions:0];
+    NSDictionary *doc = @{
+      @"path":     url.path,
+      @"name":     url.lastPathComponent,
+      @"type":     @"epub",
+      @"data":     base64
+    };
+    if (self.webReady) {
+      [self sendFunction:@"receiveDocument" payload:doc];
+    } else {
+      self.pendingDocument = doc;
+    }
   } else {
-    self.pendingDocument = doc;
+    // Text file (md, txt, markdown)
+    NSError  *error   = nil;
+    NSString *content = [NSString stringWithContentsOfURL:url
+                                             usedEncoding:NULL
+                                                    error:&error];
+    if (!content) {
+      [self showError:@"Cannot Open File"
+               detail:error.localizedDescription ?: @"Unknown error reading the file."];
+      return;
+    }
+    NSDictionary *doc = @{
+      @"path":    url.path,
+      @"name":    url.lastPathComponent,
+      @"type":    @"text",
+      @"content": content
+    };
+    if (self.webReady) {
+      [self sendFunction:@"receiveDocument" payload:doc];
+    } else {
+      self.pendingDocument = doc;
+    }
   }
 }
 
@@ -382,23 +429,25 @@
       kLSRolesAll,
       (__bridge CFStringRef)bundleID
     );
+    LSSetDefaultRoleHandlerForContentType(
+      (__bridge CFStringRef)@"org.idpf.epub-container",
+      kLSRolesAll,
+      (__bridge CFStringRef)bundleID
+    );
   }
 
   [self buildMenuBar];
-
-  // Only open an initial empty window if no file was passed on launch.
-  // openURLs: / openFiles: will be called before or shortly after this,
-  // so we delay one runloop tick and check.
-  dispatch_async(dispatch_get_main_queue(), ^{
-    if (self.controllers.count == 0) {
-      [self createNewWindow];
-    }
-  });
 
   [NSApp activateIgnoringOtherApps:YES];
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+  return YES;
+}
+
+// Called only when the app launches with no file arguments — show welcome window
+- (BOOL)applicationOpenUntitledFile:(NSApplication *)sender {
+  [self createNewWindow];
   return YES;
 }
 

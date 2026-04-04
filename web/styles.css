@@ -492,7 +492,7 @@ body {
   justify-content: center;
   min-height: calc(100vh - 200px);
   text-align: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .welcome h1 {
@@ -501,40 +501,40 @@ body {
   font-weight: 700;
   color: var(--text-muted);
   letter-spacing: -0.02em;
-  margin-bottom: 4px;
+  margin-bottom: 8px;
 }
 
-.welcome p {
-  font-size: 16px;
+.welcome-quote-en {
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-style: italic;
   color: var(--text-dim);
-  margin-bottom: 0;
+  line-height: 1.7;
+  max-width: 480px;
+  margin-bottom: 2px;
+}
+
+.welcome-quote-zh {
+  font-size: 14px;
+  color: var(--text-dim);
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
 }
 
 .welcome .hint {
-  font-size: 14px;
+  font-size: 13px;
   color: #504945;
 }
 
-.welcome-logo {
-  width: 80px;
-  height: 80px;
-  margin-bottom: 1.2rem;
-  image-rendering: -webkit-optimize-contrast;
-}
-
 .welcome .credit {
-  margin-top: 1.5rem;
-  font-size: 0.85rem;
-  color: var(--text-secondary, #888);
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
 .welcome .credit a {
   color: var(--accent);
   text-decoration: none;
-}
-
-.welcome .credit a:hover {
-  text-decoration: underline;
 }
 
 /* ============================================================
@@ -618,5 +618,31 @@ body {
 
   .topbar {
     padding-left: 20px; /* non-macOS or small screen */
+  }
+}
+
+/* ============================================================
+   Wide-screen two-column reading layout
+   ============================================================ */
+@media (min-width: 1440px) {
+  .reader .article {
+    max-width: 1240px;
+    columns: 2;
+    column-gap: 64px;
+  }
+
+  .article h1,
+  .article h2,
+  .article .block-title,
+  .article .block-heading {
+    column-span: all;
+  }
+
+  .article .block-lede {
+    column-span: all;
+  }
+
+  .article .block-break {
+    column-span: all;
   }
 }
