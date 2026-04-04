@@ -492,7 +492,7 @@ body {
   justify-content: center;
   min-height: calc(100vh - 200px);
   text-align: center;
-  gap: 14px;
+  gap: 0;
 }
 
 .welcome h1 {
@@ -501,9 +501,10 @@ body {
   font-weight: 700;
   color: var(--text-muted);
   letter-spacing: -0.02em;
-  margin-bottom: 8px;
+  margin-bottom: 32px;
 }
 
+/* Quote block: EN + ZH stay close together */
 .welcome-quote-en {
   font-family: var(--font-serif);
   font-size: 15px;
@@ -511,23 +512,24 @@ body {
   color: var(--text-dim);
   line-height: 1.7;
   max-width: 480px;
-  margin-bottom: 2px;
+  margin-bottom: 6px;
 }
 
 .welcome-quote-zh {
+  font-family: var(--font-sans);
   font-size: 14px;
   color: var(--text-dim);
-  letter-spacing: 0.05em;
-  margin-bottom: 8px;
+  margin-bottom: 36px; /* gap before info block */
 }
 
+/* Info block: hint + credit stay close together */
 .welcome .hint {
   font-size: 13px;
   color: #504945;
+  margin-bottom: 8px;
 }
 
 .welcome .credit {
-  margin-top: 8px;
   font-size: 13px;
   color: var(--text-dim);
 }
@@ -621,28 +623,3 @@ body {
   }
 }
 
-/* ============================================================
-   Wide-screen two-column reading layout
-   ============================================================ */
-@media (min-width: 1440px) {
-  .reader .article {
-    max-width: 1240px;
-    columns: 2;
-    column-gap: 64px;
-  }
-
-  .article h1,
-  .article h2,
-  .article .block-title,
-  .article .block-heading {
-    column-span: all;
-  }
-
-  .article .block-lede {
-    column-span: all;
-  }
-
-  .article .block-break {
-    column-span: all;
-  }
-}

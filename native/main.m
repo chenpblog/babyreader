@@ -70,11 +70,33 @@
                          NSWindowStyleMaskMiniaturizable  |
                          NSWindowStyleMaskResizable;
 
-  self.window = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1200, 800)
+  // Restore last saved frame, or default to full visible-screen height
+  NSRect initialFrame;
+  NSString *savedFrame = [[NSUserDefaults standardUserDefaults] stringForKey:@"BRWindowFrame"];
+  if (savedFrame) {
+    NSRect restored = NSRectFromString(savedFrame);
+    // Sanity check: frame must intersect at least one screen
+    BOOL valid = NO;
+    for (NSScreen *s in [NSScreen screens]) {
+      if (NSIntersectsRect(restored, s.frame)) { valid = YES; break; }
+    }
+    initialFrame = valid ? restored : NSZeroRect;
+  }
+  if (NSIsEmptyRect(initialFrame)) {
+    NSRect screen = [[NSScreen mainScreen] visibleFrame];
+    CGFloat width = MIN(1200.0, screen.size.width * 0.88);
+    initialFrame = NSMakeRect(
+      screen.origin.x + floor((screen.size.width - width) / 2.0),
+      screen.origin.y,
+      width,
+      screen.size.height
+    );
+  }
+
+  self.window = [[NSWindow alloc] initWithContentRect:initialFrame
                                             styleMask:styleMask
                                               backing:NSBackingStoreBuffered
                                                 defer:NO];
-  [self.window center];
   self.window.minSize                    = NSMakeSize(800, 600);
   self.window.appearance                 = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
   self.window.titleVisibility            = NSWindowTitleHidden;
@@ -204,6 +226,23 @@
 
 - (void)windowWillClose:(NSNotification *)notification {
   [self.appDelegate removeController:self];
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+  [self persistWindowFrame];
+}
+
+- (void)windowDidMove:(NSNotification *)notification {
+  [self persistWindowFrame];
+}
+
+- (void)persistWindowFrame {
+  // Don't save full-screen or zoomed state
+  if (self.window.styleMask & NSWindowStyleMaskFullScreen) return;
+  if (self.window.isZoomed) return;
+  [[NSUserDefaults standardUserDefaults]
+    setObject:NSStringFromRect(self.window.frame)
+       forKey:@"BRWindowFrame"];
 }
 
 // ---------------------------------------------------------------------------
