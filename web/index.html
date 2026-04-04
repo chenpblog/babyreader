@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BabyReader</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Top bar: app name + file info + mode toggle -->
+  <div class="topbar" id="topbar">
+    <div class="topbar-left">
+      <span class="app-name">BabyReader</span>
+      <span class="file-name" id="fileName"></span>
+    </div>
+    <div class="topbar-right">
+      <button class="mode-btn active" id="btnRead" onclick="setMode('read')">阅读</button>
+      <button class="mode-btn" id="btnEdit" onclick="setMode('edit')">编辑</button>
+    </div>
+  </div>
+
+  <!-- Reader view -->
+  <div class="reader" id="reader">
+    <div class="article" id="article">
+      <!-- Welcome state -->
+      <div class="welcome" id="welcome">
+        <img class="welcome-logo" src="assets/cat-logo.png" alt="BabyReader" width="80" height="80">
+        <h1>BabyReader</h1>
+        <p>打开一篇文章，安静读完它</p>
+        <p class="hint">⌘O 打开文件 · 支持 .md .markdown .txt · 双击直接阅读</p>
+        <p class="credit">by <a href="https://x.com/KingJing001" target="_blank">@一龙小包子</a></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Editor view (hidden by default) -->
+  <div class="editor-container" id="editorContainer" style="display:none">
+    <div class="editor-pane">
+      <textarea class="editor" id="editor" spellcheck="false"></textarea>
+    </div>
+    <div class="preview-pane">
+      <div class="article" id="preview"></div>
+    </div>
+  </div>
+
+  <script src="lib/marked.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
