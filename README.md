@@ -3,6 +3,8 @@
 A dark-mode Markdown reader for macOS — open your articles, read without noise.
 给精读文章一个安静的地方。
 
+![BabyReader](assets/babyreader.png)
+
 ## What This Does
 
 **BabyReader** is a native macOS app that opens Markdown files and renders them into a clean, distraction-free reading view. Drop in a `.md` or `.txt` file produced by Claude, read it in a warm dark environment designed for long sessions, then toggle into edit mode when you need to annotate or copy content to your WeChat publisher. No browser, no tabs, no ads — just the article.
