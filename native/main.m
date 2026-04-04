@@ -225,6 +225,18 @@
 // MARK: NSWindowDelegate
 
 - (void)windowWillClose:(NSNotification *)notification {
+  // Best-effort auto-save if a file is open and web is ready
+  if (self.currentFileURL && self.webReady) {
+    NSString *ext = self.currentFileURL.pathExtension.lowercaseString;
+    if (![ext isEqualToString:@"epub"]) {
+      __weak NSURL *urlToSave = self.currentFileURL;
+      [self fetchContentFromWeb:^(NSString *content) {
+        if (content.length > 0) {
+          [content writeToURL:urlToSave atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        }
+      }];
+    }
+  }
   [self.appDelegate removeController:self];
 }
 
@@ -268,10 +280,6 @@
 - (void)openFileAtURL:(NSURL *)url {
   NSString *ext = url.pathExtension.lowercaseString;
 
-  self.currentFileURL        = url;
-  self.window.title          = url.lastPathComponent;
-  self.window.representedURL = url;
-
   if ([ext isEqualToString:@"epub"]) {
     // Read binary file and base64 encode for the web layer
     NSError *error = nil;
@@ -281,6 +289,11 @@
                detail:error.localizedDescription ?: @"Unknown error reading the file."];
       return;
     }
+    // Only set state after successful read
+    self.currentFileURL        = url;
+    self.window.title          = url.lastPathComponent;
+    self.window.representedURL = url;
+
     NSString *base64 = [data base64EncodedStringWithOptions:0];
     NSDictionary *doc = @{
       @"path":     url.path,
@@ -304,6 +317,11 @@
                detail:error.localizedDescription ?: @"Unknown error reading the file."];
       return;
     }
+    // Only set state after successful read
+    self.currentFileURL        = url;
+    self.window.title          = url.lastPathComponent;
+    self.window.representedURL = url;
+
     NSDictionary *doc = @{
       @"path":    url.path,
       @"name":    url.lastPathComponent,
@@ -335,6 +353,8 @@
 }
 
 - (void)menuSave:(id)sender {
+  NSString *ext = self.currentFileURL.pathExtension.lowercaseString;
+  if ([ext isEqualToString:@"epub"]) return;
   if (!self.currentFileURL) {
     [self menuSaveAs:sender];
     return;
@@ -342,13 +362,21 @@
   __weak typeof(self) weakSelf = self;
   [self fetchContentFromWeb:^(NSString *content) {
     [weakSelf writeContent:content toURL:weakSelf.currentFileURL];
+    [weakSelf sendFunction:@"notifySaved" payload:@{
+      @"path": weakSelf.currentFileURL.path,
+      @"name": weakSelf.currentFileURL.lastPathComponent
+    }];
   }];
 }
 
 - (void)menuSaveAs:(id)sender {
   NSSavePanel *panel = [NSSavePanel savePanel];
   panel.canCreateDirectories  = YES;
-  panel.allowedContentTypes   = [self supportedTypes];
+  panel.allowedContentTypes   = @[
+    [UTType typeWithFilenameExtension:@"md"],
+    [UTType typeWithFilenameExtension:@"markdown"],
+    UTTypePlainText
+  ];
   panel.nameFieldStringValue  = self.currentFileURL.lastPathComponent ?: @"Untitled.md";
 
   if ([panel runModal] == NSModalResponseOK) {
@@ -404,11 +432,6 @@
              detail:error.localizedDescription ?: @"Unknown error writing the file."];
     return;
   }
-  // Basic save notification (path/name update is sent separately in saveAs)
-  [self sendFunction:@"notifySaved" payload:@{
-    @"path": url.path,
-    @"name": url.lastPathComponent
-  }];
 }
 
 // ---------------------------------------------------------------------------

@@ -291,6 +291,9 @@ function renderPreview() {
    Mode Switching
    ============================================================ */
 function setMode(mode) {
+  // EPUB files are read-only — never enter edit mode
+  if (mode === 'edit' && state.contentType === 'epub') return;
+
   const prevMode = state.mode;
   state.mode = mode;
 
@@ -305,7 +308,7 @@ function setMode(mode) {
     if (prevMode === 'edit' && editor) {
       state.content = editor.value;
       // Auto-save to disk when leaving edit mode
-      if (state.isNative && state.currentPath) {
+      if (state.isNative && state.currentPath && state.contentType !== 'epub') {
         sendNative('save');
       }
     }

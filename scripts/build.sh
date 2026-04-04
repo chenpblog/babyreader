@@ -17,6 +17,9 @@ RESOURCES_WEB_LIB="${RESOURCES_WEB}/lib"
 
 echo "Building ${APP_NAME}..."
 
+# Always start from a clean build directory to prevent asset drift
+rm -rf "${BUILD_DIR}"
+
 # Create .app bundle structure
 mkdir -p "${MACOS}"
 mkdir -p "${RESOURCES_WEB}"

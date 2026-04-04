@@ -12,7 +12,7 @@ A dark-mode reader for macOS — Markdown and EPUB, read without noise.
 ### Key Features
 
 - **Dark mode** — warm dark theme with terracotta orange accent (#DA7756), designed for long reading sessions
-- **Markdown + EPUB rendering** — standard Markdown via marked.js with custom block syntax; EPUB parsed and rendered natively via JSZip
+- **Markdown + EPUB** — standard Markdown via marked.js with custom block syntax; EPUB text extracted and rendered via JSZip (images and CSS stripped for clean reading)
 - **Reading-first** — opens directly to rendered view; light editing via Cmd+E toggle (Markdown only)
 - **Multi-window** — native macOS tabs and windows for comparing content side by side
 - **Font scaling** — Cmd+/Cmd− zoom, rem-based typography that scales cleanly
@@ -31,7 +31,7 @@ cd babyreader
 ./scripts/build.sh
 ```
 
-The script compiles the native binary, bundles the app, and installs it to `~/Applications/BabyReader.app`. It also registers the app with Launch Services so `.md`, `.txt`, and `.epub` files open in BabyReader by default.
+The script compiles the native binary, bundles the app, and installs it to `~/Applications/BabyReader.app`. It also registers the app with Launch Services and sets BabyReader as the default handler for `.md` and `.epub` files.
 
 ## Usage
 
@@ -46,10 +46,9 @@ open -a BabyReader ~/path/to/book.epub
 
 **Keyboard shortcuts:**
 
-- `Cmd+E` — toggle between reading and editing mode (Markdown only)
+- `Cmd+E` — toggle between reading and editing mode (Markdown only; switching back to read auto-saves)
 - `Cmd+` / `Cmd−` — increase / decrease font size
-- `Cmd+N` — new window
-- `Cmd+T` — new tab
+- `Cmd+T` — new tab / new window
 
 ## Files
 
