@@ -275,20 +275,27 @@ body {
 }
 
 /* Blockquotes */
-.article blockquote {
+.article blockquote,
+.article .block-quote {
+  background: var(--surface-alt);
   border-left: 3px solid var(--accent);
-  padding: 4px 0 4px 20px;
+  border-radius: 0 8px 8px 0;
+  padding: 20px 24px;
   margin: 24px 0;
   color: var(--text-muted);
+  font-size: 1.0625rem;
+  line-height: 1.75;
 }
 
-.article blockquote p {
-  font-size: 1.125rem;
+.article blockquote p,
+.article .block-quote p {
+  font-size: 1.0625rem;
   color: var(--text-muted);
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
-.article blockquote p:last-child {
+.article blockquote p:last-child,
+.article .block-quote p:last-child {
   margin-bottom: 0;
 }
 
@@ -352,9 +359,7 @@ body {
 
 /* Horizontal rule */
 .article hr {
-  border: none;
-  border-top: 1px solid var(--border);
-  margin: 40px 0;
+  display: none;
 }
 
 /* ============================================================
@@ -432,28 +437,6 @@ body {
   line-height: 1.35;
 }
 
-/* QUOTE block — styled as card */
-.article .block-quote {
-  background: var(--surface-alt);
-  border-left: 3px solid var(--accent);
-  border-radius: 0 8px 8px 0;
-  padding: 20px 24px;
-  margin: 24px 0;
-  color: var(--text-muted);
-  font-size: 1.0625rem;
-  line-height: 1.75;
-}
-
-.article .block-quote p {
-  font-size: 1.0625rem;
-  color: var(--text-muted);
-  margin-bottom: 10px;
-}
-
-.article .block-quote p:last-child {
-  margin-bottom: 0;
-}
-
 /* SIGN block — author sign-off */
 .article .block-sign {
   text-align: right;
@@ -465,13 +448,15 @@ body {
 }
 
 /* When SIGN follows a blockquote, tighten the gap */
-.article blockquote + .block-sign {
+.article blockquote + .block-sign,
+.article .block-quote + .block-sign {
   margin-top: -16px;
 }
 
 /* BREAK block — visual separator */
 .article .block-break,
 .article hr.block-break {
+  display: block;
   border: none;
   border-top: none;
   margin: 40px auto;
@@ -636,4 +621,3 @@ body.immersive .topbar {
 body.immersive .reader .article {
   padding-top: 56px; /* reduced top padding without topbar */
 }
-
