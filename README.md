@@ -14,7 +14,7 @@ A dark-mode reader for macOS — Markdown and EPUB, read without noise.
 - **Dark mode** — warm dark theme with terracotta orange accent (#DA7756), designed for long reading sessions
 - **Markdown + EPUB** — standard Markdown via marked.js with custom block syntax; EPUB text extracted and rendered via JSZip (images and CSS stripped for clean reading)
 - **Reading-first** — opens directly to rendered view; light editing via Cmd+E toggle (Markdown only)
-- **Multi-window** — native macOS tabs and windows for comparing content side by side
+- **Multi-window** — independent macOS windows for comparing content side by side
 - **Font scaling** — Cmd+/Cmd− zoom, rem-based typography that scales cleanly
 - **File association** — double-click `.md`, `.txt`, or `.epub` to open directly; registers as default handler
 - **External links** — clickable links open in your default browser
@@ -48,7 +48,7 @@ open -a BabyReader ~/path/to/book.epub
 
 - `Cmd+E` — toggle between reading and editing mode (Markdown only; switching back to read auto-saves)
 - `Cmd+` / `Cmd−` — increase / decrease font size
-- `Cmd+T` — new tab / new window
+- `Cmd+N` — new window
 
 ## Files
 

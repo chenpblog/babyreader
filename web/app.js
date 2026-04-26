@@ -11,13 +11,24 @@ const state = {
   currentPath: null,
   currentName: null,
   content: '',
-  contentType: 'text'   // 'text' | 'epub'
+  contentType: 'text',   // 'text' | 'epub'
+  dirty: false
 };
 
 /* --- Native Bridge --- */
 function sendNative(type, payload = {}) {
   if (!state.isNative) return;
   window.webkit.messageHandlers.native.postMessage({ type, payload });
+}
+
+function setDirty(nextDirty, notify = true) {
+  state.dirty = !!nextDirty;
+  if (notify) {
+    sendNative('dirtyChanged', {
+      dirty: state.dirty,
+      content: state.contentType === 'text' ? state.content : ''
+    });
+  }
 }
 
 /* ============================================================
@@ -308,7 +319,7 @@ function setMode(mode) {
     if (prevMode === 'edit' && editor) {
       state.content = editor.value;
       // Auto-save to disk when leaving edit mode
-      if (state.isNative && state.currentPath && state.contentType !== 'epub') {
+      if (state.isNative && state.currentPath && state.contentType !== 'epub' && state.dirty) {
         sendNative('save');
       }
     }
@@ -383,8 +394,7 @@ function openFileBrowser() {
 }
 
 function saveFileBrowser() {
-  if (!state.content) return;
-  const blob = new Blob([state.content], { type: 'text/markdown;charset=utf-8' });
+  const blob = new Blob([state.content || ''], { type: 'text/markdown;charset=utf-8' });
   const url  = URL.createObjectURL(blob);
   const a    = document.createElement('a');
   a.href     = url;
@@ -417,7 +427,8 @@ function setupKeyboard() {
         e.preventDefault();
         // Sync editor content to state before saving
         if (state.mode === 'edit') {
-          state.content = document.getElementById('editor')?.value || state.content;
+          const editor = document.getElementById('editor');
+          if (editor) state.content = editor.value;
         }
         if (state.isNative) {
           sendNative('save', { content: state.content, path: state.currentPath });
@@ -481,6 +492,7 @@ window.appHost = {
       state.content = content || '';
     }
 
+    setDirty(false);
     setMode('read');
     renderArticle();
   },
@@ -488,6 +500,7 @@ window.appHost = {
   notifySaved({ path, name } = {}) {
     if (path) state.currentPath = path;
     if (name) state.currentName = name;
+    setDirty(false, false);
 
     const fileNameEl = document.getElementById('fileName');
     if (!fileNameEl) return;
@@ -504,7 +517,8 @@ window.appHost = {
 
   getContent() {
     if (state.mode === 'edit') {
-      state.content = document.getElementById('editor')?.value || state.content;
+      const editor = document.getElementById('editor');
+      if (editor) state.content = editor.value;
     }
     return state.contentType === 'epub' ? '' : state.content;
   },
@@ -538,7 +552,11 @@ document.addEventListener('DOMContentLoaded', () => {
       renderPreview();
     }, 300);
 
-    editor.addEventListener('input', debouncedPreview);
+    editor.addEventListener('input', () => {
+      state.content = editor.value;
+      setDirty(true);
+      debouncedPreview();
+    });
   }
 
   setupKeyboard();

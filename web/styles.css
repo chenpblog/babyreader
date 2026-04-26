@@ -79,6 +79,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  box-sizing: border-box;
   padding: 0 20px 0 80px; /* 80px left for macOS traffic lights */
   background: rgba(30, 30, 30, 0.85);
   backdrop-filter: blur(12px);
@@ -91,6 +92,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -111,6 +113,8 @@ body {
 }
 
 .file-name {
+  display: block;
+  min-width: 0;
   font-size: 14px;
   color: var(--text-muted);
   white-space: nowrap;

@@ -15,8 +15,12 @@
 
 @interface AppDelegate : NSObject <NSApplicationDelegate>
 @property (strong) NSMutableArray<BRWindowController *> *controllers;
+@property (assign) BOOL didOpenDocuments;
 - (BRWindowController *)createNewWindow;
 - (BRWindowController *)activeController;
+- (BRWindowController *)controllerForFileURL:(NSURL *)url;
+- (BRWindowController *)reuseOrCreateWindowForURL:(NSURL *)url;
+- (NSString *)normalizedPathForURL:(NSURL *)url;
 - (void)removeController:(BRWindowController *)wc;
 @end
 
@@ -28,12 +32,21 @@
 @property (strong) NSWindow     *window;
 @property (strong) WKWebView    *webView;
 @property (strong) NSURL        *currentFileURL;
+@property (copy)   NSString     *currentTextContent;
 @property (assign) BOOL          webReady;
+@property (assign) BOOL          documentDirty;
 @property (strong) NSDictionary *pendingDocument;
 @property (weak)   AppDelegate  *appDelegate;
 
 - (instancetype)initWithAppDelegate:(AppDelegate *)delegate;
 - (void)openFileAtURL:(NSURL *)url;
+- (void)focusWindow;
+- (void)cascadeWindowFromFrame:(NSRect)baseFrame;
+- (void)updateWindowTitle;
+- (BOOL)isEditableTextDocument;
+- (void)saveCurrentDocumentWithCompletion:(void (^)(BOOL success))completion;
+- (void)fetchContentFromWeb:(void (^)(NSString *content))completion;
+- (BOOL)writeContent:(NSString *)content toURL:(NSURL *)url;
 
 // Menu actions — called by AppDelegate routing
 - (void)menuOpen:(id)sender;
@@ -68,7 +81,8 @@
   NSUInteger styleMask = NSWindowStyleMaskTitled          |
                          NSWindowStyleMaskClosable        |
                          NSWindowStyleMaskMiniaturizable  |
-                         NSWindowStyleMaskResizable;
+                         NSWindowStyleMaskResizable       |
+                         NSWindowStyleMaskFullSizeContentView;
 
   // Restore last saved frame, or default to full visible-screen height
   NSRect initialFrame;
@@ -103,7 +117,8 @@
   self.window.titlebarAppearsTransparent = YES;
   self.window.movableByWindowBackground  = YES;
   self.window.title                      = @"BabyReader";
-  self.window.tabbingMode                = NSWindowTabbingModeAutomatic;
+  self.window.tabbingMode                = NSWindowTabbingModeDisallowed;
+  self.window.restorable                 = NO;
   self.window.delegate                   = self;
 
   // WKWebView configuration
@@ -124,6 +139,27 @@
   self.webView.allowsMagnification = NO;
   [self.window.contentView addSubview:self.webView];
 
+  [self.window makeKeyAndOrderFront:nil];
+}
+
+- (void)cascadeWindowFromFrame:(NSRect)baseFrame {
+  NSScreen *screen = self.window.screen ?: [NSScreen mainScreen];
+  NSRect visible = screen.visibleFrame;
+  CGFloat step = 28.0;
+  CGFloat offset = step * (CGFloat)(self.appDelegate.controllers.count % 8);
+  NSRect frame = baseFrame;
+
+  frame.size.width = MIN(frame.size.width, MAX(self.window.minSize.width, visible.size.width - 160.0));
+  frame.size.height = MIN(frame.size.height, MAX(self.window.minSize.height, visible.size.height - 120.0));
+  frame = NSOffsetRect(frame, offset, -offset);
+  frame.origin.x = MIN(MAX(frame.origin.x, NSMinX(visible)), NSMaxX(visible) - frame.size.width);
+  frame.origin.y = MIN(MAX(frame.origin.y, NSMinY(visible)), NSMaxY(visible) - frame.size.height);
+
+  [self.window setFrame:frame display:NO];
+}
+
+- (void)focusWindow {
+  [NSApp activateIgnoringOtherApps:YES];
   [self.window makeKeyAndOrderFront:nil];
 }
 
@@ -180,6 +216,16 @@
     return;
   }
 
+  if ([type isEqualToString:@"dirtyChanged"]) {
+    self.documentDirty = [payload[@"dirty"] boolValue];
+    NSString *content = payload[@"content"];
+    if ([content isKindOfClass:[NSString class]]) {
+      self.currentTextContent = content;
+    }
+    [self updateWindowTitle];
+    return;
+  }
+
   if ([type isEqualToString:@"copyText"]) {
     NSString *text = payload[@"text"];
     if ([text isKindOfClass:[NSString class]] && text.length) {
@@ -225,17 +271,8 @@
 // MARK: NSWindowDelegate
 
 - (void)windowWillClose:(NSNotification *)notification {
-  // Best-effort auto-save if a file is open and web is ready
-  if (self.currentFileURL && self.webReady) {
-    NSString *ext = self.currentFileURL.pathExtension.lowercaseString;
-    if (![ext isEqualToString:@"epub"]) {
-      __weak NSURL *urlToSave = self.currentFileURL;
-      [self fetchContentFromWeb:^(NSString *content) {
-        if (content.length > 0) {
-          [content writeToURL:urlToSave atomically:YES encoding:NSUTF8StringEncoding error:nil];
-        }
-      }];
-    }
+  if (self.documentDirty && [self isEditableTextDocument] && self.webReady) {
+    [self writeContent:self.currentTextContent ?: @"" toURL:self.currentFileURL];
   }
   [self.appDelegate removeController:self];
 }
@@ -291,8 +328,9 @@
     }
     // Only set state after successful read
     self.currentFileURL        = url;
-    self.window.title          = url.lastPathComponent;
-    self.window.representedURL = url;
+    self.currentTextContent    = nil;
+    self.documentDirty         = NO;
+    [self updateWindowTitle];
 
     NSString *base64 = [data base64EncodedStringWithOptions:0];
     NSDictionary *doc = @{
@@ -319,8 +357,9 @@
     }
     // Only set state after successful read
     self.currentFileURL        = url;
-    self.window.title          = url.lastPathComponent;
-    self.window.representedURL = url;
+    self.currentTextContent    = content;
+    self.documentDirty         = NO;
+    [self updateWindowTitle];
 
     NSDictionary *doc = @{
       @"path":    url.path,
@@ -347,26 +386,26 @@
   panel.allowedContentTypes     = [self supportedTypes];
 
   if ([panel runModal] == NSModalResponseOK) {
-    // Reuse this window when the user explicitly opens from within it.
-    [self openFileAtURL:panel.URL];
+    BRWindowController *existing = [self.appDelegate controllerForFileURL:panel.URL];
+    if (existing) {
+      [existing focusWindow];
+      return;
+    }
+
+    NSURL *selectedURL = panel.URL;
+    if (self.documentDirty && [self isEditableTextDocument]) {
+      [self saveCurrentDocumentWithCompletion:^(BOOL success) {
+        if (success) [self openFileAtURL:selectedURL];
+      }];
+      return;
+    }
+
+    [self openFileAtURL:selectedURL];
   }
 }
 
 - (void)menuSave:(id)sender {
-  NSString *ext = self.currentFileURL.pathExtension.lowercaseString;
-  if ([ext isEqualToString:@"epub"]) return;
-  if (!self.currentFileURL) {
-    [self menuSaveAs:sender];
-    return;
-  }
-  __weak typeof(self) weakSelf = self;
-  [self fetchContentFromWeb:^(NSString *content) {
-    [weakSelf writeContent:content toURL:weakSelf.currentFileURL];
-    [weakSelf sendFunction:@"notifySaved" payload:@{
-      @"path": weakSelf.currentFileURL.path,
-      @"name": weakSelf.currentFileURL.lastPathComponent
-    }];
-  }];
+  [self saveCurrentDocumentWithCompletion:nil];
 }
 
 - (void)menuSaveAs:(id)sender {
@@ -383,11 +422,11 @@
     NSURL *target = panel.URL;
     __weak typeof(self) weakSelf = self;
     [self fetchContentFromWeb:^(NSString *content) {
-      [weakSelf writeContent:content toURL:target];
+      if (![weakSelf writeContent:content toURL:target]) return;
       weakSelf.currentFileURL        = target;
-      weakSelf.window.title          = target.lastPathComponent;
-      weakSelf.window.representedURL = target;
-      // Notify web layer so its state stays in sync
+      weakSelf.currentTextContent    = content;
+      weakSelf.documentDirty         = NO;
+      [weakSelf updateWindowTitle];
       [weakSelf sendFunction:@"notifySaved" payload:@{
         @"path": target.path,
         @"name": target.lastPathComponent
@@ -415,6 +454,45 @@
 // ---------------------------------------------------------------------------
 // MARK: Save helpers
 
+- (BOOL)isEditableTextDocument {
+  if (!self.currentFileURL) return NO;
+  NSString *ext = self.currentFileURL.pathExtension.lowercaseString;
+  return ![ext isEqualToString:@"epub"];
+}
+
+- (void)saveCurrentDocumentWithCompletion:(void (^)(BOOL success))completion {
+  if (![self isEditableTextDocument]) {
+    if (!self.currentFileURL) {
+      [self menuSaveAs:nil];
+    }
+    if (completion) completion(NO);
+    return;
+  }
+
+  NSURL *targetURL = self.currentFileURL;
+  __weak typeof(self) weakSelf = self;
+  [self fetchContentFromWeb:^(NSString *content) {
+    __strong typeof(weakSelf) strongSelf = weakSelf;
+    if (!strongSelf) {
+      if (completion) completion(NO);
+      return;
+    }
+
+    BOOL ok = [strongSelf writeContent:content toURL:targetURL];
+    if (ok) {
+      strongSelf.currentTextContent = content;
+      strongSelf.documentDirty = NO;
+      strongSelf.currentFileURL = targetURL;
+      [strongSelf updateWindowTitle];
+      [strongSelf sendFunction:@"notifySaved" payload:@{
+        @"path": targetURL.path,
+        @"name": targetURL.lastPathComponent
+      }];
+    }
+    if (completion) completion(ok);
+  }];
+}
+
 - (void)fetchContentFromWeb:(void (^)(NSString *content))completion {
   NSString *script = @"window.appHost && typeof window.appHost.getContent === 'function' "
                       @"? window.appHost.getContent() : null;";
@@ -424,14 +502,23 @@
   }];
 }
 
-- (void)writeContent:(NSString *)content toURL:(NSURL *)url {
+- (BOOL)writeContent:(NSString *)content toURL:(NSURL *)url {
   NSError *error = nil;
   BOOL ok = [content writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error];
   if (!ok) {
     [self showError:@"Save Failed"
              detail:error.localizedDescription ?: @"Unknown error writing the file."];
-    return;
+    return NO;
   }
+  return YES;
+}
+
+- (void)updateWindowTitle {
+  NSString *title = self.currentFileURL.lastPathComponent ?: @"BabyReader";
+  if (self.documentDirty && [self isEditableTextDocument]) {
+    title = [title stringByAppendingString:@" • Edited"];
+  }
+  self.window.title = title;
 }
 
 // ---------------------------------------------------------------------------
@@ -486,10 +573,17 @@
 
 @implementation AppDelegate
 
+- (instancetype)init {
+  self = [super init];
+  if (self) {
+    _controllers = [NSMutableArray array];
+  }
+  return self;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
   [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-
-  self.controllers = [NSMutableArray array];
+  [NSWindow setAllowsAutomaticWindowTabbing:NO];
 
   // Register as default handler for Markdown files
   NSString *bundleID = [[NSBundle mainBundle] bundleIdentifier];
@@ -509,31 +603,63 @@
   [self buildMenuBar];
 
   [NSApp activateIgnoringOtherApps:YES];
+
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.15 * NSEC_PER_SEC)),
+                 dispatch_get_main_queue(), ^{
+    if (!self.didOpenDocuments && self.controllers.count == 0) {
+      [self createNewWindow];
+    }
+  });
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
   return YES;
 }
 
-// Called only when the app launches with no file arguments — show welcome window
-- (BOOL)applicationOpenUntitledFile:(NSApplication *)sender {
-  [self createNewWindow];
-  return YES;
+- (BOOL)applicationShouldOpenUntitledFile:(NSApplication *)sender {
+  return NO;
 }
 
 // Called by Finder / double-click (legacy path)
+- (BOOL)application:(NSApplication *)sender openFile:(NSString *)filename {
+  self.didOpenDocuments = YES;
+  NSURL *url = [NSURL fileURLWithPath:filename];
+  BRWindowController *wc = [self reuseOrCreateWindowForURL:url];
+  if (wc.currentFileURL) {
+    [wc focusWindow];
+    return YES;
+  }
+  [wc openFileAtURL:url];
+  return YES;
+}
+
+- (BOOL)application:(NSApplication *)sender openFileWithoutUI:(NSString *)filename {
+  return [self application:sender openFile:filename];
+}
+
 - (void)application:(NSApplication *)sender openFiles:(NSArray<NSString *> *)filenames {
+  self.didOpenDocuments = YES;
   for (NSString *path in filenames) {
-    BRWindowController *wc = [self reuseOrCreateWindow];
-    [wc openFileAtURL:[NSURL fileURLWithPath:path]];
+    NSURL *url = [NSURL fileURLWithPath:path];
+    BRWindowController *wc = [self reuseOrCreateWindowForURL:url];
+    if (wc.currentFileURL) {
+      [wc focusWindow];
+      continue;
+    }
+    [wc openFileAtURL:url];
   }
   [sender replyToOpenOrPrint:NSApplicationDelegateReplySuccess];
 }
 
 // Called on modern macOS (10.13+)
 - (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
+  self.didOpenDocuments = YES;
   for (NSURL *url in urls) {
-    BRWindowController *wc = [self reuseOrCreateWindow];
+    BRWindowController *wc = [self reuseOrCreateWindowForURL:url];
+    if (wc.currentFileURL) {
+      [wc focusWindow];
+      continue;
+    }
     [wc openFileAtURL:url];
   }
 }
@@ -544,6 +670,9 @@
 - (BRWindowController *)createNewWindow {
   BRWindowController *wc = [[BRWindowController alloc] initWithAppDelegate:self];
   [self.controllers addObject:wc];
+  if (self.controllers.count > 1) {
+    [wc cascadeWindowFromFrame:wc.window.frame];
+  }
   return wc;
 }
 
@@ -553,6 +682,46 @@
     if (!wc.currentFileURL) return wc;
   }
   return [self createNewWindow];
+}
+
+- (NSString *)normalizedPathForURL:(NSURL *)url {
+  if (!url.isFileURL) return url.absoluteString ?: @"";
+  NSURL *standardURL = url.URLByResolvingSymlinksInPath.URLByStandardizingPath;
+  NSString *path = standardURL.path.stringByStandardizingPath;
+  return path ?: url.path.stringByStandardizingPath;
+}
+
+- (NSString *)fileIdentityForURL:(NSURL *)url {
+  if (!url.isFileURL) return url.absoluteString ?: @"";
+
+  id resourceIdentifier = nil;
+  if ([url getResourceValue:&resourceIdentifier
+                     forKey:NSURLFileResourceIdentifierKey
+                      error:nil] && resourceIdentifier) {
+    return [resourceIdentifier description];
+  }
+  return [self normalizedPathForURL:url];
+}
+
+- (BRWindowController *)controllerForFileURL:(NSURL *)url {
+  NSString *targetIdentity = [self fileIdentityForURL:url];
+  NSString *targetPath = [self normalizedPathForURL:url];
+  if (!targetIdentity.length && !targetPath.length) return nil;
+
+  for (BRWindowController *wc in self.controllers) {
+    if (!wc.currentFileURL) continue;
+    NSString *openIdentity = [self fileIdentityForURL:wc.currentFileURL];
+    NSString *openPath = [self normalizedPathForURL:wc.currentFileURL];
+    if (targetIdentity.length && [openIdentity isEqualToString:targetIdentity]) return wc;
+    if (targetPath.length && [openPath isEqualToString:targetPath]) return wc;
+  }
+  return nil;
+}
+
+- (BRWindowController *)reuseOrCreateWindowForURL:(NSURL *)url {
+  BRWindowController *existing = [self controllerForFileURL:url];
+  if (existing) return existing;
+  return [self reuseOrCreateWindow];
 }
 
 - (void)removeController:(BRWindowController *)wc {
@@ -606,7 +775,7 @@
   [[self activeController] menuZoomReset:sender];
 }
 
-- (void)menuNewTab:(id)sender {
+- (void)menuNewWindow:(id)sender {
   [self createNewWindow];
 }
 
@@ -637,11 +806,11 @@
   openItem.target = self;
   [fileMenu addItem:openItem];
 
-  NSMenuItem *newTabItem = [[NSMenuItem alloc] initWithTitle:@"New Tab"
-                                                      action:@selector(menuNewTab:)
-                                               keyEquivalent:@"t"];
-  newTabItem.target = self;
-  [fileMenu addItem:newTabItem];
+  NSMenuItem *newWindowItem = [[NSMenuItem alloc] initWithTitle:@"New Window"
+                                                         action:@selector(menuNewWindow:)
+                                                  keyEquivalent:@"n"];
+  newWindowItem.target = self;
+  [fileMenu addItem:newWindowItem];
 
   [fileMenu addItem:[NSMenuItem separatorItem]];
 
@@ -715,13 +884,6 @@
                  keyEquivalent:@"m"];
   [windowMenu addItemWithTitle:@"Zoom"
                         action:@selector(performZoom:)
-                 keyEquivalent:@""];
-  [windowMenu addItem:[NSMenuItem separatorItem]];
-  [windowMenu addItemWithTitle:@"Merge All Windows"
-                        action:@selector(mergeAllWindows:)
-                 keyEquivalent:@""];
-  [windowMenu addItemWithTitle:@"Show All Tabs"
-                        action:@selector(toggleTabOverview:)
                  keyEquivalent:@""];
   [windowMenu addItem:[NSMenuItem separatorItem]];
   [windowMenu addItemWithTitle:@"Bring All to Front"
