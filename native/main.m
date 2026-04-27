@@ -9,6 +9,29 @@
 
 @class BRWindowController;
 
+@interface BRWindow : NSWindow
+@end
+
+@implementation BRWindow
+- (void)sendEvent:(NSEvent *)event {
+  if (event.type == NSEventTypeLeftMouseDown) {
+    NSPoint point = [self.contentView convertPoint:event.locationInWindow fromView:nil];
+    NSRect bounds = self.contentView.bounds;
+    CGFloat topbarHeight = 56.0;
+    CGFloat rightControlsWidth = 180.0;
+    BOOL isTopbar = NSPointInRect(point, bounds) && point.y >= NSHeight(bounds) - topbarHeight;
+    BOOL isControlArea = point.x >= NSWidth(bounds) - rightControlsWidth;
+
+    if (isTopbar && !isControlArea) {
+      [self performWindowDragWithEvent:event];
+      return;
+    }
+  }
+
+  [super sendEvent:event];
+}
+@end
+
 // ---------------------------------------------------------------------------
 // MARK: - AppDelegate interface
 // ---------------------------------------------------------------------------
@@ -81,8 +104,7 @@
   NSUInteger styleMask = NSWindowStyleMaskTitled          |
                          NSWindowStyleMaskClosable        |
                          NSWindowStyleMaskMiniaturizable  |
-                         NSWindowStyleMaskResizable       |
-                         NSWindowStyleMaskFullSizeContentView;
+                         NSWindowStyleMaskResizable;
 
   // Restore last saved frame, or default to full visible-screen height
   NSRect initialFrame;
@@ -107,15 +129,15 @@
     );
   }
 
-  self.window = [[NSWindow alloc] initWithContentRect:initialFrame
+  self.window = [[BRWindow alloc] initWithContentRect:initialFrame
                                             styleMask:styleMask
                                               backing:NSBackingStoreBuffered
                                                 defer:NO];
   self.window.minSize                    = NSMakeSize(800, 600);
   self.window.appearance                 = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
-  self.window.titleVisibility            = NSWindowTitleHidden;
-  self.window.titlebarAppearsTransparent = YES;
-  self.window.movableByWindowBackground  = YES;
+  self.window.titleVisibility            = NSWindowTitleVisible;
+  self.window.titlebarAppearsTransparent = NO;
+  self.window.movableByWindowBackground  = NO;
   self.window.title                      = @"BabyReader";
   self.window.tabbingMode                = NSWindowTabbingModeDisallowed;
   self.window.restorable                 = NO;
@@ -145,16 +167,21 @@
 - (void)cascadeWindowFromFrame:(NSRect)baseFrame {
   NSScreen *screen = self.window.screen ?: [NSScreen mainScreen];
   NSRect visible = screen.visibleFrame;
-  CGFloat step = 28.0;
-  CGFloat offset = step * (CGFloat)(self.appDelegate.controllers.count % 8);
+  CGFloat offset = 24.0;
   NSRect frame = baseFrame;
 
-  frame.size.width = MIN(frame.size.width, MAX(self.window.minSize.width, visible.size.width - 160.0));
-  frame.size.height = MIN(frame.size.height, MAX(self.window.minSize.height, visible.size.height - 120.0));
-  frame = NSOffsetRect(frame, offset, -offset);
-  frame.origin.x = MIN(MAX(frame.origin.x, NSMinX(visible)), NSMaxX(visible) - frame.size.width);
-  frame.origin.y = MIN(MAX(frame.origin.y, NSMinY(visible)), NSMaxY(visible) - frame.size.height);
+  frame.origin.x = NSMinX(baseFrame) + offset;
+  if (NSMaxX(frame) > NSMaxX(visible)) {
+    frame.origin.x = NSMinX(baseFrame) - offset;
+  }
 
+  frame.origin.y = NSMinY(baseFrame) - offset;
+  if (NSMinY(frame) < NSMinY(visible)) {
+    frame.origin.y = NSMinY(baseFrame) + offset;
+  }
+
+  frame.origin.x = MIN(MAX(frame.origin.x, NSMinX(visible)), NSMaxX(visible) - NSWidth(frame));
+  frame.origin.y = MIN(MAX(frame.origin.y, NSMinY(visible)), NSMaxY(visible) - NSHeight(frame));
   [self.window setFrame:frame display:NO];
 }
 
@@ -668,10 +695,12 @@
 // MARK: Window management
 
 - (BRWindowController *)createNewWindow {
+  BRWindowController *previous = self.controllers.lastObject;
+  NSRect cascadeBaseFrame = previous ? previous.window.frame : NSZeroRect;
   BRWindowController *wc = [[BRWindowController alloc] initWithAppDelegate:self];
   [self.controllers addObject:wc];
-  if (self.controllers.count > 1) {
-    [wc cascadeWindowFromFrame:wc.window.frame];
+  if (previous) {
+    [wc cascadeWindowFromFrame:cascadeBaseFrame];
   }
   return wc;
 }
