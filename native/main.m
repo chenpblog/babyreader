@@ -414,17 +414,16 @@
   panel.allowedContentTypes     = [self supportedTypes];
 
   if ([panel runModal] == NSModalResponseOK) {
+    NSURL *selectedURL = panel.URL;
     BRWindowController *existing = [self.appDelegate controllerForFileURL:panel.URL];
     if (existing) {
       [existing focusWindow];
       return;
     }
 
-    NSURL *selectedURL = panel.URL;
-    if (self.documentDirty && [self isEditableTextDocument]) {
-      [self saveCurrentDocumentWithCompletion:^(BOOL success) {
-        if (success) [self openFileAtURL:selectedURL];
-      }];
+    if (self.currentFileURL) {
+      BRWindowController *wc = [self.appDelegate createNewWindow];
+      [wc openFileAtURL:selectedURL];
       return;
     }
 

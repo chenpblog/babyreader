@@ -268,14 +268,23 @@ function configureMarked() {
    ============================================================ */
 function renderArticle() {
   const article = document.getElementById('article');
+  const reader = document.getElementById('reader');
   const welcome = document.getElementById('welcome');
+  const isWelcome = !state.currentPath && (!state.content || !state.content.trim());
 
-  if (!state.content || !state.content.trim()) {
+  if (reader) reader.classList.toggle('is-welcome', isWelcome);
+
+  if (isWelcome) {
     article.innerHTML = '';
     if (welcome) {
       welcome.style.display = '';
       article.appendChild(welcome);
     }
+    return;
+  }
+
+  if (!state.content || !state.content.trim()) {
+    article.innerHTML = '';
     return;
   }
 

@@ -158,10 +158,23 @@ body {
   overflow-x: hidden;
 }
 
+.reader.is-welcome {
+  overflow-y: hidden;
+}
+
 .reader .article {
   max-width: 720px;
   margin: 0 auto;
   padding: 96px 40px 120px; /* 48px topbar + 48px breathing room */
+}
+
+.reader.is-welcome .article {
+  height: 100vh;
+  max-width: none;
+  padding: var(--topbar-h) 40px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 /* ============================================================
@@ -482,6 +495,10 @@ body {
   min-height: calc(100vh - 200px);
   text-align: center;
   gap: 0;
+}
+
+.reader.is-welcome .welcome {
+  min-height: auto;
 }
 
 .welcome h1 {
