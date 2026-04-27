@@ -133,7 +133,8 @@
                                             styleMask:styleMask
                                               backing:NSBackingStoreBuffered
                                                 defer:NO];
-  self.window.minSize                    = NSMakeSize(800, 600);
+  self.window.minSize                    = NSMakeSize(520, 520);
+  self.window.collectionBehavior         = NSWindowCollectionBehaviorFullScreenPrimary;
   self.window.appearance                 = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
   self.window.titleVisibility            = NSWindowTitleVisible;
   self.window.titlebarAppearsTransparent = NO;
