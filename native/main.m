@@ -75,6 +75,7 @@
 - (void)menuOpen:(id)sender;
 - (void)menuSave:(id)sender;
 - (void)menuSaveAs:(id)sender;
+- (void)menuReload:(id)sender;
 - (void)menuToggleEditMode:(id)sender;
 - (void)menuZoomIn:(id)sender;
 - (void)menuZoomOut:(id)sender;
@@ -241,6 +242,11 @@
 
   if ([type isEqualToString:@"saveAs"]) {
     [self menuSaveAs:nil];
+    return;
+  }
+
+  if ([type isEqualToString:@"reload"]) {
+    [self menuReload:nil];
     return;
   }
 
@@ -459,6 +465,12 @@
         @"name": target.lastPathComponent
       }];
     }];
+  }
+}
+
+- (void)menuReload:(id)sender {
+  if (self.currentFileURL) {
+    [self openFileAtURL:self.currentFileURL];
   }
 }
 
@@ -788,6 +800,10 @@
   [[self activeController] menuSaveAs:sender];
 }
 
+- (void)menuReload:(id)sender {
+  [[self activeController] menuReload:sender];
+}
+
 - (void)menuToggleEditMode:(id)sender {
   [[self activeController] menuToggleEditMode:sender];
 }
@@ -848,6 +864,12 @@
                                              keyEquivalent:@"s"];
   saveItem.target = self;
   [fileMenu addItem:saveItem];
+
+  NSMenuItem *reloadItem = [[NSMenuItem alloc] initWithTitle:@"Reload"
+                                                      action:@selector(menuReload:)
+                                               keyEquivalent:@"r"];
+  reloadItem.target = self;
+  [fileMenu addItem:reloadItem];
 
   NSMenuItem *saveAsItem = [[NSMenuItem alloc] initWithTitle:@"Save As..."
                                                       action:@selector(menuSaveAs:)

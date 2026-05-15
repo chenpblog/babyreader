@@ -12,7 +12,9 @@ const state = {
   currentName: null,
   content: '',
   contentType: 'text',   // 'text' | 'epub'
-  dirty: false
+  dirty: false,
+  theme: localStorage.getItem('babyreader_theme') || 'dark',
+  width: localStorage.getItem('babyreader_width') || 'default'
 };
 
 /* --- Native Bridge --- */
@@ -195,6 +197,20 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * Normalize a file path: ensure it starts with / and does not end with /.
+ * Returns null if the input is falsy.
+ */
+function normalizePath(p) {
+  if (!p) return null;
+  let result = p;
+  // Ensure leading /
+  if (!result.startsWith('/')) result = '/' + result;
+  // Remove trailing /
+  while (result.length > 1 && result.endsWith('/')) result = result.slice(0, -1);
+  return result;
+}
+
 /* ============================================================
    EPUB Parser
    ============================================================ */
@@ -264,6 +280,34 @@ function configureMarked() {
 }
 
 /* ============================================================
+   Settings (Theme & Width)
+   ============================================================ */
+function setTheme(theme) {
+  state.theme = theme;
+  localStorage.setItem('babyreader_theme', theme);
+  document.body.setAttribute('data-theme', theme);
+
+  document.querySelectorAll('[data-theme-btn]').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-theme-btn') === theme);
+  });
+}
+
+function setWidth(width) {
+  state.width = width;
+  localStorage.setItem('babyreader_width', width);
+  document.body.setAttribute('data-width', width);
+
+  document.querySelectorAll('[data-width-btn]').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-width-btn') === width);
+  });
+}
+
+function applyInitialSettings() {
+  setTheme(state.theme);
+  setWidth(state.width);
+}
+
+/* ============================================================
    Rendering
    ============================================================ */
 function renderArticle() {
@@ -322,6 +366,7 @@ function setMode(mode) {
   const btnRead         = document.getElementById('btnRead');
   const btnEdit         = document.getElementById('btnEdit');
   const editor          = document.getElementById('editor');
+  const sidebar         = document.getElementById('sidebar');
 
   if (mode === 'read') {
     // Flush editor content before switching — only if coming from edit mode
@@ -335,6 +380,7 @@ function setMode(mode) {
 
     reader.style.display          = '';
     editorContainer.style.display = 'none';
+    if (sidebar) sidebar.style.display = '';
     btnRead.classList.add('active');
     btnEdit.classList.remove('active');
     renderArticle();
@@ -342,6 +388,7 @@ function setMode(mode) {
   } else if (mode === 'edit') {
     reader.style.display          = 'none';
     editorContainer.style.display = 'flex';
+    if (sidebar) sidebar.style.display = 'none';
     btnRead.classList.remove('active');
     btnEdit.classList.add('active');
 
@@ -374,6 +421,15 @@ let zoomLevel = 100; // percentage
 
 function applyZoom() {
   document.documentElement.style.fontSize = (zoomLevel / 100 * 16) + 'px';
+}
+
+/* ============================================================
+   Reload
+   ============================================================ */
+function reloadFile() {
+  if (state.isNative) {
+    sendNative('reload');
+  }
 }
 
 /* ============================================================
@@ -446,6 +502,11 @@ function setupKeyboard() {
         }
         break;
 
+      case 'r':
+        e.preventDefault();
+        reloadFile();
+        break;
+
       case 'e':
         e.preventDefault();
         if (state.contentType !== 'epub') {
@@ -485,7 +546,17 @@ window.appHost = {
     state.contentType  = (type === 'epub') ? 'epub' : 'text';
 
     const fileNameEl = document.getElementById('fileName');
-    if (fileNameEl) fileNameEl.textContent = name;
+    const copyBtn = document.getElementById('pathCopyBtn');
+
+    // Normalize path: ensure leading /, no trailing /
+    const displayPath = normalizePath(path);
+    state.currentPath = displayPath || path;
+
+    if (fileNameEl) {
+      fileNameEl.textContent = displayPath || name;
+      fileNameEl.title = displayPath || name;
+    }
+    if (copyBtn) copyBtn.style.display = displayPath ? '' : 'none';
 
     if (type === 'epub' && data) {
       // Show loading state
@@ -514,7 +585,7 @@ window.appHost = {
     const fileNameEl = document.getElementById('fileName');
     if (!fileNameEl) return;
 
-    const displayName = name || state.currentName;
+    const displayName = normalizePath(state.currentPath) || name || state.currentName;
     fileNameEl.textContent = '已保存';
     fileNameEl.style.color = 'var(--accent)';
 
@@ -552,6 +623,7 @@ window.appHost = {
    ============================================================ */
 document.addEventListener('DOMContentLoaded', () => {
   configureMarked();
+  applyInitialSettings();
 
   // Set up editor live preview with debounce
   const editor = document.getElementById('editor');
@@ -569,6 +641,49 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   setupKeyboard();
+
+  // Path copy — use hidden input + execCommand for WKWebView compatibility
+  function copyPathToClipboard() {
+    const path = state.currentPath;
+    if (!path) return;
+
+    const hiddenInput = document.getElementById('hiddenPathInput');
+    const copyBtn = document.getElementById('pathCopyBtn');
+    const fileNameEl = document.getElementById('fileName');
+
+    if (hiddenInput) {
+      hiddenInput.value = path;
+      hiddenInput.style.left = '0';
+      hiddenInput.style.opacity = '0.01';
+      hiddenInput.focus();
+      hiddenInput.select();
+      try { document.execCommand('copy'); } catch (e) { /* silent */ }
+      hiddenInput.style.left = '-9999px';
+      hiddenInput.style.opacity = '0';
+      hiddenInput.blur();
+    }
+
+    showCopyFeedback(copyBtn, fileNameEl);
+  }
+
+  function showCopyFeedback(copyBtn, fileNameEl) {
+    if (copyBtn) copyBtn.classList.add('copied');
+    const original = fileNameEl?.textContent || '';
+    if (fileNameEl) {
+      fileNameEl.textContent = '已复制';
+      fileNameEl.style.color = 'var(--accent)';
+    }
+    setTimeout(() => {
+      if (copyBtn) copyBtn.classList.remove('copied');
+      if (fileNameEl) {
+        fileNameEl.textContent = original;
+        fileNameEl.style.color = '';
+      }
+    }, 1200);
+  }
+
+  const pathCopyBtn = document.getElementById('pathCopyBtn');
+  if (pathCopyBtn) pathCopyBtn.addEventListener('click', copyPathToClipboard);
 
   // Tell native layer the web view is ready
   sendNative('ready');

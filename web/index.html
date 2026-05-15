@@ -7,6 +7,20 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
+  <!-- Sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-group" title="主题">
+      <button class="sidebar-btn btn-theme-dark active" data-theme-btn="dark" onclick="setTheme('dark')">深</button>
+      <button class="sidebar-btn btn-theme-light" data-theme-btn="light" onclick="setTheme('light')">浅</button>
+      <button class="sidebar-btn btn-theme-sepia" data-theme-btn="sepia" onclick="setTheme('sepia')">护</button>
+    </div>
+    <div class="sidebar-group" title="宽度">
+      <button class="sidebar-btn btn-width active" data-width-btn="default" onclick="setWidth('default')">默</button>
+      <button class="sidebar-btn btn-width" data-width-btn="wide" onclick="setWidth('wide')">宽</button>
+      <button class="sidebar-btn btn-width" data-width-btn="full" onclick="setWidth('full')">满</button>
+    </div>
+  </div>
+
   <!-- Top bar: app name + file info + mode toggle -->
   <div class="topbar" id="topbar">
     <div class="topbar-left">
@@ -14,10 +28,20 @@
       <span class="file-name" id="fileName"></span>
     </div>
     <div class="topbar-right">
+      <button class="path-copy-btn" id="pathCopyBtn" title="复制路径" style="display:none">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+        </svg>
+      </button>
+      <button class="mode-btn" id="btnReload" onclick="reloadFile()">刷新</button>
       <button class="mode-btn active" id="btnRead" onclick="setMode('read')">阅读</button>
       <button class="mode-btn" id="btnEdit" onclick="setMode('edit')">编辑</button>
     </div>
   </div>
+
+  <!-- Hidden input for clipboard copy -->
+  <input type="text" id="hiddenPathInput" style="position:fixed;left:-9999px;top:-9999px;opacity:0;" readonly>
 
   <!-- Reader view -->
   <div class="reader is-welcome" id="reader">

@@ -15,9 +15,54 @@
   --border:      #333333;
   --topbar-h:    48px;
 
+  --text-strong: #f0e8dc;
+  --code-bg:     #2a2a2a;
+  --code-text:   #c4886a;
+  --pre-text:    #b8c0c8;
+  --th-bg:       #2a2a2a;
+  --tr-even-bg:  rgba(255,255,255,0.02);
+
   --font-serif:  "Songti SC", "Iowan Old Style", Georgia, serif;
   --font-sans:   -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   --font-mono:   "SF Mono", "JetBrains Mono", Menlo, "Courier New", monospace;
+}
+
+[data-theme="light"] {
+  --bg:          #fdfcf8;
+  --surface:     #f4f1ea;
+  --surface-alt: #ece8df;
+  --surface-code:#f0ede6;
+  --text:        #2d2b2a;
+  --text-muted:  #6c6764;
+  --text-dim:    #9b9590;
+  --accent:      #d4603e;
+  --border:      #e2dcd4;
+
+  --text-strong: #111111;
+  --code-bg:     #e9e6df;
+  --code-text:   #c45b3a;
+  --pre-text:    #384048;
+  --th-bg:       #e5e1d8;
+  --tr-even-bg:  rgba(0,0,0,0.02);
+}
+
+[data-theme="sepia"] {
+  --bg:          #f4ecd8;
+  --surface:     #e8ddc0;
+  --surface-alt: #daccab;
+  --surface-code:#e2d5b6;
+  --text:        #433422;
+  --text-muted:  #7a6345;
+  --text-dim:    #a38a6a;
+  --accent:      #b9542a;
+  --border:      #d1bfa3;
+
+  --text-strong: #2b2014;
+  --code-bg:     #d8cbaa;
+  --code-text:   #a14826;
+  --pre-text:    #4a3e30;
+  --th-bg:       #d1c3a0;
+  --tr-even-bg:  rgba(0,0,0,0.02);
 }
 
 /* --- Reset & Base --- */
@@ -81,7 +126,8 @@ body {
   justify-content: space-between;
   box-sizing: border-box;
   padding: 0 20px;
-  background: rgba(30, 30, 30, 0.85);
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
@@ -115,11 +161,45 @@ body {
 .file-name {
   display: block;
   min-width: 0;
-  font-size: 14px;
-  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.file-name:hover {
+  color: var(--text-muted);
+}
+
+/* Copy button in topbar */
+.path-copy-btn {
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.path-copy-btn:hover {
+  background: rgba(218, 119, 86, 0.12);
+  color: var(--accent);
+}
+
+.path-copy-btn.copied {
+  color: var(--accent);
 }
 
 /* Mode toggle buttons */
@@ -149,6 +229,7 @@ body {
   border-color: var(--accent);
 }
 
+
 /* ============================================================
    Reader (read mode)
    ============================================================ */
@@ -163,9 +244,10 @@ body {
 }
 
 .reader .article {
-  max-width: 720px;
+  max-width: var(--article-width, 720px);
   margin: 0 auto;
   padding: 96px 40px 120px; /* 48px topbar + 48px breathing room */
+  transition: max-width 0.3s ease;
 }
 
 .reader.is-welcome .article {
@@ -250,7 +332,7 @@ body {
 /* Bold */
 .article strong {
   font-weight: 700;
-  color: #f0e8dc; /* slightly brighter than body */
+  color: var(--text-strong);
 }
 
 /* Italic */
@@ -263,11 +345,11 @@ body {
 .article code {
   font-family: var(--font-mono);
   font-size: 0.9375rem;
-  background: #2a2a2a;
-  color: #c4886a;
+  background: var(--code-bg);
+  color: var(--code-text);
   padding: 2px 6px;
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,0.06);
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
 }
 
 /* Code blocks */
@@ -284,7 +366,7 @@ body {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   background: none;
-  color: #b8c0c8;
+  color: var(--pre-text);
   padding: 0;
   border: none;
   border-radius: 0;
@@ -347,7 +429,7 @@ body {
 }
 
 .article th {
-  background: #2a2a2a;
+  background: var(--th-bg);
   color: var(--text);
   font-weight: 600;
   padding: 10px 14px;
@@ -362,7 +444,7 @@ body {
 }
 
 .article tr:nth-child(even) td {
-  background: rgba(255,255,255,0.02);
+  background: var(--tr-even-bg);
 }
 
 /* Images */
@@ -639,6 +721,103 @@ body.immersive .topbar {
   transition: opacity 0.25s ease;
 }
 
+
+
 body.immersive .reader .article {
   padding-top: 56px; /* reduced top padding without topbar */
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+.sidebar {
+  position: fixed;
+  left: 0;
+  top: var(--topbar-h);
+  bottom: 0;
+  width: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 32px 0;
+  gap: 32px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid var(--border);
+  z-index: 90;
+  transition: transform 0.25s ease, opacity 0.25s ease;
+}
+
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.sidebar-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 13px;
+  transition: all 0.15s ease;
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+.sidebar-btn:hover {
+  background: var(--surface-alt);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.sidebar-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Specific theme buttons colors */
+.btn-theme-dark { background: #1e1e1e; border-color: #444; }
+.btn-theme-light { background: #fdfcf8; border-color: #ddd; color: #333; }
+.btn-theme-sepia { background: #f4ecd8; border-color: #d1bfa3; color: #433422; }
+
+/* Width buttons specific sizing if needed */
+.btn-width {
+  border-radius: 6px; 
+}
+
+/* Reader padding adjustment to avoid sidebar overlap */
+.reader {
+  padding-left: 52px;
+}
+
+/* Immersive mode hides sidebar */
+body.immersive .sidebar {
+  transform: translateX(-100%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Width Variants
+   ============================================================ */
+[data-width="default"] {
+  --article-width: 720px;
+}
+
+[data-width="wide"] {
+  --article-width: 1000px;
+}
+
+[data-width="full"] {
+  --article-width: 100%;
 }
