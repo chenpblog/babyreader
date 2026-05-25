@@ -14,13 +14,51 @@ const state = {
   contentType: 'text',   // 'text' | 'epub'
   dirty: false,
   theme: localStorage.getItem('babyreader_theme') || 'dark',
-  width: localStorage.getItem('babyreader_width') || 'default'
+  width: localStorage.getItem('babyreader_width') || 'default',
+  tocOpen: localStorage.getItem('babyreader_toc_open') === 'true',
+  tocNumbered: localStorage.getItem('babyreader_toc_numbered') === 'true'
 };
 
 /* --- Native Bridge --- */
 function sendNative(type, payload = {}) {
   if (!state.isNative) return;
   window.webkit.messageHandlers.native.postMessage({ type, payload });
+}
+
+async function copyTextToClipboard(text) {
+  if (!text) return false;
+
+  if (state.isNative) {
+    sendNative('copyText', { text });
+    return true;
+  }
+
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      // Fall through to the legacy selection-based copy.
+    }
+  }
+
+  const hiddenInput = document.getElementById('hiddenPathInput');
+  if (!hiddenInput) return false;
+
+  hiddenInput.value = text;
+  hiddenInput.style.left = '0';
+  hiddenInput.style.opacity = '0.01';
+  hiddenInput.focus();
+  hiddenInput.select();
+
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+
+  hiddenInput.style.left = '-9999px';
+  hiddenInput.style.opacity = '0';
+  hiddenInput.blur();
+
+  return copied;
 }
 
 function setDirty(nextDirty, notify = true) {
@@ -197,6 +235,17 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+function slugifyHeading(text, fallbackIndex) {
+  const slug = (text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  return slug || `heading-${fallbackIndex}`;
+}
+
 /**
  * Normalize a file path: ensure it starts with / and does not end with /.
  * Returns null if the input is falsy.
@@ -324,11 +373,13 @@ function renderArticle() {
       welcome.style.display = '';
       article.appendChild(welcome);
     }
+    updateToc();
     return;
   }
 
   if (!state.content || !state.content.trim()) {
     article.innerHTML = '';
+    updateToc();
     return;
   }
 
@@ -339,7 +390,43 @@ function renderArticle() {
     // Markdown — run through preprocessor + marked
     const html = preprocessCustomBlocks(state.content);
     article.innerHTML = html;
+    enhanceCodeBlocks(article);
   }
+
+  updateToc();
+}
+
+function enhanceCodeBlocks(root) {
+  if (!root) return;
+
+  root.querySelectorAll('pre > code').forEach(code => {
+    const pre = code.parentElement;
+    if (!pre || pre.parentElement?.classList.contains('code-block')) return;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'code-block';
+
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'code-copy-btn';
+    button.textContent = '复制';
+    button.setAttribute('aria-label', '复制代码');
+
+    button.addEventListener('click', async () => {
+      const copied = await copyTextToClipboard(code.textContent || '');
+      if (!copied) return;
+
+      button.textContent = '已复制';
+      button.classList.add('copied');
+      setTimeout(() => {
+        button.textContent = '复制';
+        button.classList.remove('copied');
+      }, 1200);
+    });
+
+    pre.before(wrapper);
+    wrapper.append(pre, button);
+  });
 }
 
 function renderPreview() {
@@ -389,6 +476,7 @@ function setMode(mode) {
     reader.style.display          = 'none';
     editorContainer.style.display = 'flex';
     if (sidebar) sidebar.style.display = 'none';
+    closeTocPanel();
     btnRead.classList.remove('active');
     btnEdit.classList.add('active');
 
@@ -401,6 +489,125 @@ function setMode(mode) {
     // Focus editor
     editor.focus();
   }
+}
+
+/* ============================================================
+   Table of Contents
+   ============================================================ */
+function getTocElements() {
+  return {
+    panel: document.getElementById('tocPanel'),
+    list: document.getElementById('tocList'),
+    group: document.getElementById('tocSidebarGroup'),
+    button: document.getElementById('tocToggleBtn'),
+    numberButton: document.getElementById('tocNumberBtn')
+  };
+}
+
+function setTocNumbered(numbered, render = true) {
+  state.tocNumbered = !!numbered;
+  localStorage.setItem('babyreader_toc_numbered', state.tocNumbered ? 'true' : 'false');
+
+  const { numberButton } = getTocElements();
+  if (numberButton) {
+    numberButton.classList.toggle('active', state.tocNumbered);
+    numberButton.setAttribute('aria-pressed', state.tocNumbered ? 'true' : 'false');
+  }
+
+  if (render) updateToc();
+}
+
+function setTocOpen(open) {
+  state.tocOpen = !!open;
+  localStorage.setItem('babyreader_toc_open', state.tocOpen ? 'true' : 'false');
+
+  const { panel, button } = getTocElements();
+  document.body.classList.toggle('toc-open', state.tocOpen);
+  if (panel) panel.hidden = !state.tocOpen;
+  if (button) {
+    button.classList.toggle('active', state.tocOpen);
+    button.setAttribute('aria-expanded', state.tocOpen ? 'true' : 'false');
+  }
+}
+
+function closeTocPanel() {
+  const { panel, button } = getTocElements();
+  document.body.classList.remove('toc-open');
+  if (panel) panel.hidden = true;
+  if (button) {
+    button.classList.remove('active');
+    button.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function updateToc() {
+  const article = document.getElementById('article');
+  const reader = document.getElementById('reader');
+  const { panel, list, group, button } = getTocElements();
+  if (!article || !list || !group || !panel) return;
+
+  const headings = Array.from(article.querySelectorAll('h1, h2, h3, h4, .block-heading'))
+    .filter(heading => heading.textContent.trim());
+  const shouldShow = state.mode === 'read' && !reader?.classList.contains('is-welcome') && headings.length > 1;
+
+  group.style.display = shouldShow ? '' : 'none';
+  if (!shouldShow) {
+    list.innerHTML = '';
+    closeTocPanel();
+    return;
+  }
+
+  const headingMeta = headings.map(heading => ({
+    heading,
+    level: heading.classList.contains('block-heading')
+      ? 2
+      : Math.min(4, Math.max(1, Number(heading.tagName.slice(1)) || 2))
+  }));
+  const baseLevel = Math.min(...headingMeta.map(item => item.level));
+  const counters = [0, 0, 0, 0];
+  const usedIds = new Set();
+  list.innerHTML = '';
+  headingMeta.forEach(({ heading, level }, index) => {
+    let baseId = heading.id || slugifyHeading(heading.textContent, index + 1);
+    let id = baseId;
+    let suffix = 2;
+    while (usedIds.has(id) || (document.getElementById(id) && document.getElementById(id) !== heading)) {
+      id = `${baseId}-${suffix++}`;
+    }
+    heading.id = id;
+    usedIds.add(id);
+
+    const link = document.createElement('button');
+    link.type = 'button';
+    link.className = `toc-item toc-level-${level}`;
+    if (state.tocNumbered) {
+      const depth = Math.min(counters.length, Math.max(1, level - baseLevel + 1));
+      for (let i = 0; i < depth - 1; i++) {
+        if (counters[i] === 0) counters[i] = 1;
+      }
+      counters[depth - 1] += 1;
+      counters.fill(0, depth);
+
+      const number = counters.slice(0, depth).filter(Boolean).join('.');
+      const numberEl = document.createElement('span');
+      numberEl.className = 'toc-number';
+      numberEl.textContent = number;
+      const labelEl = document.createElement('span');
+      labelEl.className = 'toc-label';
+      labelEl.textContent = heading.textContent.trim();
+      link.append(numberEl, labelEl);
+    } else {
+      link.textContent = heading.textContent.trim();
+    }
+    link.addEventListener('click', () => {
+      heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    list.appendChild(link);
+  });
+
+  setTocOpen(state.tocOpen);
+  setTocNumbered(state.tocNumbered, false);
+  if (button) button.disabled = false;
 }
 
 /* ============================================================
@@ -642,28 +849,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setupKeyboard();
 
-  // Path copy — use hidden input + execCommand for WKWebView compatibility
-  function copyPathToClipboard() {
+  // Path copy — native bridge first, then browser clipboard fallbacks.
+  async function copyPathToClipboard() {
     const path = state.currentPath;
     if (!path) return;
 
-    const hiddenInput = document.getElementById('hiddenPathInput');
     const copyBtn = document.getElementById('pathCopyBtn');
     const fileNameEl = document.getElementById('fileName');
+    const copied = await copyTextToClipboard(path);
 
-    if (hiddenInput) {
-      hiddenInput.value = path;
-      hiddenInput.style.left = '0';
-      hiddenInput.style.opacity = '0.01';
-      hiddenInput.focus();
-      hiddenInput.select();
-      try { document.execCommand('copy'); } catch (e) { /* silent */ }
-      hiddenInput.style.left = '-9999px';
-      hiddenInput.style.opacity = '0';
-      hiddenInput.blur();
-    }
-
-    showCopyFeedback(copyBtn, fileNameEl);
+    if (copied) showCopyFeedback(copyBtn, fileNameEl);
   }
 
   function showCopyFeedback(copyBtn, fileNameEl) {
@@ -684,6 +879,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const pathCopyBtn = document.getElementById('pathCopyBtn');
   if (pathCopyBtn) pathCopyBtn.addEventListener('click', copyPathToClipboard);
+
+  const tocToggleBtn = document.getElementById('tocToggleBtn');
+  if (tocToggleBtn) {
+    tocToggleBtn.addEventListener('click', () => {
+      setTocOpen(!state.tocOpen);
+    });
+  }
+
+  const tocNumberBtn = document.getElementById('tocNumberBtn');
+  if (tocNumberBtn) {
+    tocNumberBtn.addEventListener('click', () => {
+      setTocNumbered(!state.tocNumbered);
+    });
+    setTocNumbered(state.tocNumbered, false);
+  }
 
   // Tell native layer the web view is ready
   sendNative('ready');

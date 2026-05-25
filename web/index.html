@@ -19,7 +19,18 @@
       <button class="sidebar-btn btn-width" data-width-btn="wide" onclick="setWidth('wide')">宽</button>
       <button class="sidebar-btn btn-width" data-width-btn="full" onclick="setWidth('full')">满</button>
     </div>
+    <div class="sidebar-group toc-sidebar-group" id="tocSidebarGroup" title="目录" style="display:none">
+      <button class="sidebar-btn btn-toc" id="tocToggleBtn" aria-label="目录" aria-expanded="false">目</button>
+    </div>
   </div>
+
+  <aside class="toc-panel" id="tocPanel" aria-label="目录" hidden>
+    <div class="toc-header">
+      <div class="toc-title">目录</div>
+      <button class="toc-number-btn" id="tocNumberBtn" type="button" aria-pressed="false">序号</button>
+    </div>
+    <nav class="toc-list" id="tocList"></nav>
+  </aside>
 
   <!-- Top bar: app name + file info + mode toggle -->
   <div class="topbar" id="topbar">

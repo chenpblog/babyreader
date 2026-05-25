@@ -18,7 +18,7 @@
     NSPoint point = [self.contentView convertPoint:event.locationInWindow fromView:nil];
     NSRect bounds = self.contentView.bounds;
     CGFloat topbarHeight = 56.0;
-    CGFloat rightControlsWidth = 180.0;
+    CGFloat rightControlsWidth = 260.0;
     BOOL isTopbar = NSPointInRect(point, bounds) && point.y >= NSHeight(bounds) - topbarHeight;
     BOOL isControlArea = point.x >= NSWidth(bounds) - rightControlsWidth;
 
