@@ -33,9 +33,8 @@ cp "${ROOT_DIR}/web/index.html"  "${RESOURCES_WEB}/index.html"
 cp "${ROOT_DIR}/web/styles.css"  "${RESOURCES_WEB}/styles.css"
 cp "${ROOT_DIR}/web/app.js"      "${RESOURCES_WEB}/app.js"
 
-# Copy marked.min.js
-cp "${ROOT_DIR}/web/lib/marked.min.js" "${RESOURCES_WEB_LIB}/marked.min.js"
-cp "${ROOT_DIR}/web/lib/jszip.min.js"  "${RESOURCES_WEB_LIB}/jszip.min.js"
+# Copy web/lib libraries
+cp -R "${ROOT_DIR}/web/lib/." "${RESOURCES_WEB_LIB}/"
 
 # Copy web assets (cat logo, etc.)
 if [ -d "${ROOT_DIR}/web/assets" ]; then

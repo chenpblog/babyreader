@@ -1010,3 +1010,388 @@ body.immersive.toc-open .reader {
     width: auto;
   }
 }
+
+/* ============================================================
+   Premium Typography & Font Switches
+   ============================================================ */
+[data-font-family="serif"] .article {
+  font-family: var(--font-serif);
+}
+[data-font-family="serif"] .article p {
+  font-family: var(--font-serif);
+  text-align: justify;
+}
+
+/* ============================================================
+   Task Lists Beautification
+   ============================================================ */
+.article li input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid var(--accent);
+  border-radius: 4px;
+  outline: none;
+  background-color: transparent;
+  cursor: default;
+  vertical-align: middle;
+  margin-right: 8px;
+  margin-top: -3px;
+  position: relative;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.article li input[type="checkbox"]:checked {
+  background-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.article li input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* ============================================================
+   Enhanced Code Block Wrapper (Prism/MPE Style)
+   ============================================================ */
+.code-block {
+  margin: 24px 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  background: var(--surface-code);
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: color-mix(in srgb, var(--surface-code) 90%, #fff 4%);
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+[data-theme="dark"] .code-block-header {
+  background: #232323;
+}
+
+.code-block-lang {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.code-copy-btn-new {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.code-copy-btn-new:hover,
+.code-copy-btn-new.copied {
+  background: rgba(218, 119, 86, 0.12);
+  border-color: rgba(218, 119, 86, 0.3);
+  color: var(--accent);
+}
+
+.code-block pre {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  padding: 16px 20px !important;
+}
+
+/* ============================================================
+   PlantUML & Mermaid Containers
+   ============================================================ */
+.puml-svg-container,
+.mermaid-svg-container {
+  margin: 28px 0;
+  padding: 24px;
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100px;
+}
+
+.puml-svg-container svg {
+  max-width: 100% !important;
+}
+
+.mermaid-svg-container svg {
+  width: 30% !important;
+  max-width: 100% !important;
+  height: auto !important;
+}
+
+.puml-loading {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+}
+
+.puml-error,
+.mermaid-error {
+  width: 100%;
+  padding: 16px;
+  background: rgba(244, 67, 54, 0.06);
+  border-left: 4px solid #f44336;
+  border-radius: 0 6px 6px 0;
+  color: #f44336;
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.puml-error-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.puml-error pre {
+  margin: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  padding: 0;
+}
+
+/* ============================================================
+   Glassmorphism Settings Panel
+   ============================================================ */
+.settings-panel {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  max-width: 90vw;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  z-index: 1000;
+  padding: 24px;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  animation: settingsFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes settingsFadeIn {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  transition: color 0.15s ease;
+  outline: none;
+}
+
+.settings-close-btn:hover {
+  color: var(--accent);
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-item label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.settings-label-checkbox {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+  width: 100%;
+}
+
+.settings-label-checkbox span {
+  font-size: 13px !important;
+  color: var(--text) !important;
+}
+
+.settings-item input[type="text"] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.settings-item input[type="text"]:focus {
+  border-color: var(--accent);
+}
+
+.settings-item input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  background-color: var(--border);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s ease;
+}
+
+.settings-item input[type="checkbox"]:checked {
+  background-color: var(--accent);
+}
+
+.settings-item input[type="checkbox"]::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  background-color: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.settings-item input[type="checkbox"]:checked::after {
+  transform: translateX(16px);
+}
+
+/* ============================================================
+   TOC Scrollspy & Glassmorphism Beauty
+   ============================================================ */
+.toc-panel {
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+}
+
+.toc-item {
+  position: relative;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-left: 2px solid transparent;
+  border-radius: 0 6px 6px 0 !important;
+}
+
+.toc-item.active {
+  background: rgba(218, 119, 86, 0.08);
+  color: var(--accent);
+  border-left-color: var(--accent);
+  font-weight: 600;
+  padding-left: 14px;
+}
+
+/* ============================================================
+   Markdown Typography Polish
+   ============================================================ */
+.article h2 {
+  position: relative;
+  padding-bottom: 10px;
+}
+.article h2::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 40px;
+  height: 2px;
+  background: var(--accent);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.article h2:hover::after {
+  width: 80px;
+}
+
+.article blockquote {
+  border-left: 4px solid var(--accent);
+  background: var(--surface-alt);
+  border-radius: 0 8px 8px 0;
+  box-shadow: inset 1px 0 4px rgba(0,0,0,0.02);
+}
+
+.article table {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+}
+
+.article th {
+  border: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.article td {
+  border: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.article tr:last-child td {
+  border-bottom: none;
+}
+

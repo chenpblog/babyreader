@@ -270,6 +270,83 @@
     return;
   }
 
+  if ([type isEqualToString:@"renderPlantuml"]) {
+    NSString *reqId   = payload[@"id"];
+    NSString *content = payload[@"content"];
+    NSString *jarPath = payload[@"jarPath"];
+    NSString *javaPath = payload[@"javaPath"];
+
+    if (![reqId isKindOfClass:[NSString class]] || !reqId.length ||
+        ![content isKindOfClass:[NSString class]] ||
+        ![jarPath isKindOfClass:[NSString class]] || !jarPath.length) {
+      [self sendFunction:@"receivePlantumlResult" payload:@{
+        @"id": reqId ?: @"",
+        @"error": @"渲染失败：无效的 PlantUML 参数"
+      }];
+      return;
+    }
+
+    NSString *finalJavaPath = (javaPath.length > 0) ? javaPath : @"/usr/bin/java";
+
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+      NSTask *task = [[NSTask alloc] init];
+      task.launchPath = finalJavaPath;
+      task.arguments = @[@"-jar", jarPath, @"-pipe", @"-tsvg"];
+
+      NSPipe *inPipe  = [NSPipe pipe];
+      NSPipe *outPipe = [NSPipe pipe];
+      NSPipe *errPipe = [NSPipe pipe];
+
+      task.standardInput  = inPipe;
+      task.standardOutput = outPipe;
+      task.standardError  = errPipe;
+
+      @try {
+        [task launch];
+      } @catch (NSException *exception) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [weakSelf sendFunction:@"receivePlantumlResult" payload:@{
+            @"id": reqId,
+            @"error": [NSString stringWithFormat:@"无法启动 Java 进程，请检查可执行路径配置。原因: %@", exception.reason]
+          }];
+        });
+        return;
+      }
+
+      // Write PUML source to standard input and close the handle
+      NSFileHandle *inHandle = [inPipe fileHandleForWriting];
+      NSData *inputData = [content dataUsingEncoding:NSUTF8StringEncoding];
+      [inHandle writeData:inputData];
+      [inHandle closeFile];
+
+      // Read output and error logs
+      NSData *outData = [[outPipe fileHandleForReading] readDataToEndOfFile];
+      NSData *errData = [[errPipe fileHandleForReading] readDataToEndOfFile];
+
+      [task waitUntilExit];
+
+      NSString *svgString = [[NSString alloc] initWithData:outData encoding:NSUTF8StringEncoding];
+      NSString *errString = [[NSString alloc] initWithData:errData encoding:NSUTF8StringEncoding];
+
+      dispatch_async(dispatch_get_main_queue(), ^{
+        if (task.terminationStatus != 0 || errString.length > 0) {
+          NSString *errMsg = (errString.length > 0) ? errString : @"PlantUML 执行发生未知异常";
+          [weakSelf sendFunction:@"receivePlantumlResult" payload:@{
+            @"id": reqId,
+            @"error": errMsg
+          }];
+        } else {
+          [weakSelf sendFunction:@"receivePlantumlResult" payload:@{
+            @"id": reqId,
+            @"svg": svgString
+          }];
+        }
+      });
+    });
+    return;
+  }
+
   (void)payload;
 }
 
@@ -343,69 +420,37 @@
   return @[
     [UTType typeWithFilenameExtension:@"md"],
     [UTType typeWithFilenameExtension:@"markdown"],
-    [UTType typeWithFilenameExtension:@"epub"],
     UTTypePlainText
   ];
 }
 
 - (void)openFileAtURL:(NSURL *)url {
-  NSString *ext = url.pathExtension.lowercaseString;
+  // Text file (md, txt, markdown)
+  NSError  *error   = nil;
+  NSString *content = [NSString stringWithContentsOfURL:url
+                                           usedEncoding:NULL
+                                                  error:&error];
+  if (!content) {
+    [self showError:@"Cannot Open File"
+             detail:error.localizedDescription ?: @"Unknown error reading the file."];
+    return;
+  }
+  // Only set state after successful read
+  self.currentFileURL        = url;
+  self.currentTextContent    = content;
+  self.documentDirty         = NO;
+  [self updateWindowTitle];
 
-  if ([ext isEqualToString:@"epub"]) {
-    // Read binary file and base64 encode for the web layer
-    NSError *error = nil;
-    NSData  *data  = [NSData dataWithContentsOfURL:url options:0 error:&error];
-    if (!data) {
-      [self showError:@"Cannot Open File"
-               detail:error.localizedDescription ?: @"Unknown error reading the file."];
-      return;
-    }
-    // Only set state after successful read
-    self.currentFileURL        = url;
-    self.currentTextContent    = nil;
-    self.documentDirty         = NO;
-    [self updateWindowTitle];
-
-    NSString *base64 = [data base64EncodedStringWithOptions:0];
-    NSDictionary *doc = @{
-      @"path":     url.path,
-      @"name":     url.lastPathComponent,
-      @"type":     @"epub",
-      @"data":     base64
-    };
-    if (self.webReady) {
-      [self sendFunction:@"receiveDocument" payload:doc];
-    } else {
-      self.pendingDocument = doc;
-    }
+  NSDictionary *doc = @{
+    @"path":    url.path,
+    @"name":    url.lastPathComponent,
+    @"type":    @"text",
+    @"content": content
+  };
+  if (self.webReady) {
+    [self sendFunction:@"receiveDocument" payload:doc];
   } else {
-    // Text file (md, txt, markdown)
-    NSError  *error   = nil;
-    NSString *content = [NSString stringWithContentsOfURL:url
-                                             usedEncoding:NULL
-                                                    error:&error];
-    if (!content) {
-      [self showError:@"Cannot Open File"
-               detail:error.localizedDescription ?: @"Unknown error reading the file."];
-      return;
-    }
-    // Only set state after successful read
-    self.currentFileURL        = url;
-    self.currentTextContent    = content;
-    self.documentDirty         = NO;
-    [self updateWindowTitle];
-
-    NSDictionary *doc = @{
-      @"path":    url.path,
-      @"name":    url.lastPathComponent,
-      @"type":    @"text",
-      @"content": content
-    };
-    if (self.webReady) {
-      [self sendFunction:@"receiveDocument" payload:doc];
-    } else {
-      self.pendingDocument = doc;
-    }
+    self.pendingDocument = doc;
   }
 }
 
@@ -629,11 +674,6 @@
   if (bundleID) {
     LSSetDefaultRoleHandlerForContentType(
       (__bridge CFStringRef)@"net.daringfireball.markdown",
-      kLSRolesAll,
-      (__bridge CFStringRef)bundleID
-    );
-    LSSetDefaultRoleHandlerForContentType(
-      (__bridge CFStringRef)@"org.idpf.epub-container",
       kLSRolesAll,
       (__bridge CFStringRef)bundleID
     );

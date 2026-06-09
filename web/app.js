@@ -11,12 +11,15 @@ const state = {
   currentPath: null,
   currentName: null,
   content: '',
-  contentType: 'text',   // 'text' | 'epub'
   dirty: false,
   theme: localStorage.getItem('babyreader_theme') || 'dark',
   width: localStorage.getItem('babyreader_width') || 'default',
+  fontFamily: localStorage.getItem('babyreader_font_family') || 'sans',
   tocOpen: localStorage.getItem('babyreader_toc_open') === 'true',
-  tocNumbered: localStorage.getItem('babyreader_toc_numbered') === 'true'
+  tocNumbered: localStorage.getItem('babyreader_toc_numbered') === 'true',
+  pumlLocal: localStorage.getItem('babyreader_puml_local') === 'true',
+  pumlJarPath: localStorage.getItem('babyreader_puml_jar_path') || '',
+  pumlJavaPath: localStorage.getItem('babyreader_puml_java_path') || '/usr/bin/java'
 };
 
 /* --- Native Bridge --- */
@@ -66,7 +69,7 @@ function setDirty(nextDirty, notify = true) {
   if (notify) {
     sendNative('dirtyChanged', {
       dirty: state.dirty,
-      content: state.contentType === 'text' ? state.content : ''
+      content: state.content
     });
   }
 }
@@ -261,59 +264,96 @@ function normalizePath(p) {
 }
 
 /* ============================================================
-   EPUB Parser
+   PlantUML Encoder & Native Render Bridge
    ============================================================ */
-async function parseEpub(base64data) {
-  const zip = await JSZip.loadAsync(base64data, { base64: true });
 
-  // 1. Find OPF path from META-INF/container.xml
-  const containerXml = await zip.file('META-INF/container.xml').async('text');
-  const opfMatch = containerXml.match(/full-path="([^"]+\.opf)"/i);
-  if (!opfMatch) throw new Error('Cannot find OPF file in EPUB');
-  const opfPath = opfMatch[1];
-  const opfDir  = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : '';
+// Map 6-bit index to PlantUML Base64 character set
+function encode6bit(b) {
+  if (b < 10) return String.fromCharCode(48 + b);
+  b -= 10;
+  if (b < 26) return String.fromCharCode(65 + b);
+  b -= 26;
+  if (b < 26) return String.fromCharCode(97 + b);
+  b -= 26;
+  if (b === 0) return '-';
+  if (b === 1) return '_';
+  return '?';
+}
 
-  // 2. Parse OPF to get spine order
-  const opfXml = await zip.file(opfPath).async('text');
+function append3bytes(b1, b2, b3) {
+  const c1 = b1 >> 2;
+  const c2 = ((b1 & 0x3) << 4) | (b2 >> 4);
+  const c3 = ((b2 & 0xF) << 2) | (b3 >> 6);
+  const c4 = b3 & 0x3F;
+  return encode6bit(c1 & 0x3F) +
+         encode6bit(c2 & 0x3F) +
+         encode6bit(c3 & 0x3F) +
+         encode6bit(c4 & 0x3F);
+}
 
-  // Build manifest: id → href
-  const manifest = {};
-  const manifestRe = /<item\s[^>]*id="([^"]+)"[^>]*href="([^"]+)"[^>]*/gi;
-  let m;
-  while ((m = manifestRe.exec(opfXml)) !== null) {
-    manifest[m[1]] = m[2];
+function encode64(data) {
+  let r = "";
+  for (let i = 0; i < data.length; i += 3) {
+    if (i + 2 < data.length) {
+      r += append3bytes(data[i], data[i + 1], data[i + 2]);
+    } else if (i + 1 < data.length) {
+      r += append3bytes(data[i], data[i + 1], 0);
+    } else {
+      r += append3bytes(data[i], 0, 0);
+    }
   }
+  return r;
+}
 
-  // Get spine order (idref list)
-  const spineRe = /<itemref\s[^>]*idref="([^"]+)"/gi;
-  const spineIds = [];
-  while ((m = spineRe.exec(opfXml)) !== null) {
-    spineIds.push(m[1]);
+function getPlantumlOnlineUrl(text) {
+  try {
+    // UTF-8 encode -> DeflateRaw -> PlantUML Base64
+    const utf8Encoder = new TextEncoder();
+    const bytes = utf8Encoder.encode(text);
+    // Use pako to perform raw deflate
+    if (typeof pako !== 'undefined') {
+      const deflated = pako.deflateRaw(bytes);
+      return `http://www.plantuml.com/plantuml/svg/${encode64(deflated)}`;
+    }
+    return '';
+  } catch (err) {
+    console.error('PlantUML online encoding error:', err);
+    return '';
   }
+}
 
-  // 3. Read each chapter XHTML and extract body content
-  const chapters = [];
-  for (const id of spineIds) {
-    const href = manifest[id];
-    if (!href) continue;
-    const fullPath = opfDir + href;
-    const file = zip.file(fullPath) || zip.file(href);
-    if (!file) continue;
+// Track pending PlantUML renders for DOM update
+const pumlRequests = new Map();
 
-    const xhtml = await file.async('text');
-    // Extract body content
-    const bodyMatch = xhtml.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-    const bodyContent = bodyMatch ? bodyMatch[1] : xhtml;
-    // Strip namespace attributes and xml:lang etc
-    const cleaned = bodyContent
-      .replace(/\s+xmlns(?::\w+)?="[^"]*"/g, '')
-      .replace(/\s+xml:\w+="[^"]*"/g, '')
-      .replace(/<img[^>]*>/gi, '')  // skip broken image refs
-      .replace(/<image[^>]*>/gi, '');
-    chapters.push(cleaned);
+function requestPlantumlLocalRender(id, code) {
+  if (!state.isNative) {
+    updatePumlResult(id, '', '错误: 当前不在客户端内，无法执行本地渲染，请使用在线渲染模式。');
+    return;
   }
+  
+  pumlRequests.set(id, code);
+  sendNative('renderPlantuml', {
+    id: id,
+    content: code,
+    jarPath: state.pumlJarPath,
+    javaPath: state.pumlJavaPath
+  });
+}
 
-  return chapters.join('\n<hr class="chapter-break">\n');
+function updatePumlResult(id, svg, error) {
+  const container = document.getElementById(`puml-${id}`);
+  if (!container) return;
+  
+  if (error) {
+    container.innerHTML = `<div class="puml-error">
+      <div class="puml-error-title">PlantUML 渲染失败</div>
+      <pre>${escapeHtml(error)}</pre>
+    </div>`;
+  } else if (svg) {
+    // Insert SVG directly
+    container.innerHTML = svg;
+  }
+  pumlRequests.delete(id);
 }
 
 /* ============================================================
@@ -329,7 +369,7 @@ function configureMarked() {
 }
 
 /* ============================================================
-   Settings (Theme & Width)
+   Settings (Theme & Width & Fonts)
    ============================================================ */
 function setTheme(theme) {
   state.theme = theme;
@@ -339,6 +379,21 @@ function setTheme(theme) {
   document.querySelectorAll('[data-theme-btn]').forEach(btn => {
     btn.classList.toggle('active', btn.getAttribute('data-theme-btn') === theme);
   });
+
+  // Sync highlight.js theme stylesheet
+  const themeLink = document.getElementById('hljs-theme');
+  if (themeLink) {
+    themeLink.href = theme === 'dark' ? 'lib/github-dark.min.css' : 'lib/github.min.css';
+  }
+
+  // Update mermaid theme
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: theme === 'dark' ? 'dark' : 'default',
+      securityLevel: 'loose'
+    });
+  }
 }
 
 function setWidth(width) {
@@ -351,9 +406,52 @@ function setWidth(width) {
   });
 }
 
+function setFontFamily(family) {
+  state.fontFamily = family;
+  localStorage.setItem('babyreader_font_family', family);
+  document.body.setAttribute('data-font-family', family);
+
+  document.querySelectorAll('[data-font-btn]').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-font-btn') === family);
+  });
+}
+
+function toggleSettingsPanel() {
+  const panel = document.getElementById('settingsPanel');
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none';
+  panel.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    document.getElementById('pumlLocal').checked = state.pumlLocal;
+    document.getElementById('pumlJarPath').value = state.pumlJarPath;
+    document.getElementById('pumlJavaPath').value = state.pumlJavaPath;
+  }
+}
+
+function saveSettings() {
+  const local = document.getElementById('pumlLocal').checked;
+  const jar = document.getElementById('pumlJarPath').value;
+  const java = document.getElementById('pumlJavaPath').value;
+
+  state.pumlLocal = local;
+  state.pumlJarPath = jar;
+  state.pumlJavaPath = java;
+
+  localStorage.setItem('babyreader_puml_local', local);
+  localStorage.setItem('babyreader_puml_jar_path', jar);
+  localStorage.setItem('babyreader_puml_java_path', java);
+
+  if (state.mode === 'read') {
+    renderArticle();
+  } else if (state.mode === 'edit') {
+    renderPreview();
+  }
+}
+
 function applyInitialSettings() {
   setTheme(state.theme);
   setWidth(state.width);
+  setFontFamily(state.fontFamily);
 }
 
 /* ============================================================
@@ -383,50 +481,136 @@ function renderArticle() {
     return;
   }
 
-  if (state.contentType === 'epub') {
-    // EPUB content is already HTML — render directly
-    article.innerHTML = state.content;
-  } else {
-    // Markdown — run through preprocessor + marked
-    const html = preprocessCustomBlocks(state.content);
-    article.innerHTML = html;
-    enhanceCodeBlocks(article);
-  }
-
+  const html = preprocessCustomBlocks(state.content);
+  article.innerHTML = html;
+  
+  enhanceMarkdownContent(article);
   updateToc();
 }
 
-function enhanceCodeBlocks(root) {
+function enhanceMarkdownContent(root) {
   if (!root) return;
 
+  // 1. Process PlantUML blocks
+  let pumlCounter = 0;
   root.querySelectorAll('pre > code').forEach(code => {
     const pre = code.parentElement;
-    if (!pre || pre.parentElement?.classList.contains('code-block')) return;
+    if (!pre) return;
+    const isPuml = code.classList.contains('language-puml') || code.classList.contains('language-plantuml');
+    if (!isPuml) return;
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'code-block';
-
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'code-copy-btn';
-    button.textContent = '复制';
-    button.setAttribute('aria-label', '复制代码');
-
-    button.addEventListener('click', async () => {
-      const copied = await copyTextToClipboard(code.textContent || '');
-      if (!copied) return;
-
-      button.textContent = '已复制';
-      button.classList.add('copied');
-      setTimeout(() => {
-        button.textContent = '复制';
-        button.classList.remove('copied');
-      }, 1200);
-    });
-
-    pre.before(wrapper);
-    wrapper.append(pre, button);
+    const pumlCode = code.textContent.trim();
+    const container = document.createElement('div');
+    container.className = 'puml-svg-container';
+    
+    if (state.pumlLocal && state.pumlJarPath) {
+      pumlCounter++;
+      const id = `req-${Date.now()}-${pumlCounter}`;
+      container.id = `puml-${id}`;
+      container.innerHTML = '<div class="puml-loading">正在通过本地 PlantUML 渲染图表...</div>';
+      pre.replaceWith(container);
+      requestPlantumlLocalRender(id, pumlCode);
+    } else {
+      const url = getPlantumlOnlineUrl(pumlCode);
+      if (url) {
+        container.innerHTML = `<img src="${url}" alt="PlantUML Diagram" class="puml-online-img" style="max-width: 100%; display: block; margin: 0 auto;">`;
+      } else {
+        container.innerHTML = '<div class="puml-error">PlantUML 编码出错。</div>';
+      }
+      pre.replaceWith(container);
+    }
   });
+
+  // 2. Process Mermaid blocks
+  if (typeof mermaid !== 'undefined') {
+    let mermaidCounter = 0;
+    root.querySelectorAll('pre > code.language-mermaid').forEach(code => {
+      const pre = code.parentElement;
+      if (!pre) return;
+      mermaidCounter++;
+      
+      const mId = `mermaid-render-${Date.now()}-${mermaidCounter}`;
+      const codeText = code.textContent.trim();
+      const div = document.createElement('div');
+      div.className = 'mermaid-svg-container';
+      div.id = mId;
+      pre.replaceWith(div);
+
+      try {
+        mermaid.render(mId + '-svg', codeText).then(({ svg }) => {
+          div.innerHTML = svg;
+        }).catch(err => {
+          console.error('Mermaid render error:', err);
+          div.innerHTML = `<div class="mermaid-error">Mermaid 渲染错误: ${escapeHtml(err.message || err)}</div>`;
+        });
+      } catch (err) {
+        console.error('Mermaid exception:', err);
+        div.innerHTML = `<div class="mermaid-error">Mermaid 渲染异常: ${escapeHtml(err.message || err)}</div>`;
+      }
+    });
+  }
+
+  // 3. Process Syntax Highlighting & Code Copy bar
+  if (typeof hljs !== 'undefined') {
+    root.querySelectorAll('pre > code').forEach(code => {
+      const pre = code.parentElement;
+      if (!pre || pre.parentElement?.classList.contains('code-block')) return;
+
+      let lang = 'text';
+      code.classList.forEach(cls => {
+        if (cls.startsWith('language-')) {
+          lang = cls.replace('language-', '');
+        }
+      });
+
+      hljs.highlightElement(code);
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'code-block';
+
+      const header = document.createElement('div');
+      header.className = 'code-block-header';
+      
+      const langSpan = document.createElement('span');
+      langSpan.className = 'code-block-lang';
+      langSpan.textContent = lang.toUpperCase();
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'code-copy-btn-new';
+      button.textContent = '复制';
+      button.setAttribute('aria-label', '复制代码');
+
+      button.addEventListener('click', async () => {
+        const copied = await copyTextToClipboard(code.textContent || '');
+        if (!copied) return;
+
+        button.textContent = '已复制';
+        button.classList.add('copied');
+        setTimeout(() => {
+          button.textContent = '复制';
+          button.classList.remove('copied');
+        }, 1200);
+      });
+
+      header.append(langSpan, button);
+      pre.before(wrapper);
+      wrapper.append(header, pre);
+    });
+  }
+
+  // 4. Process KaTeX math formulas
+  if (typeof renderMathInElement !== 'undefined') {
+    renderMathInElement(root, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+      ],
+      throwOnError: false
+    });
+  }
 }
 
 function renderPreview() {
@@ -436,15 +620,13 @@ function renderPreview() {
   const raw = document.getElementById('editor')?.value || '';
   const html = preprocessCustomBlocks(raw);
   preview.innerHTML = html;
+  enhanceMarkdownContent(preview);
 }
 
 /* ============================================================
    Mode Switching
    ============================================================ */
 function setMode(mode) {
-  // EPUB files are read-only — never enter edit mode
-  if (mode === 'edit' && state.contentType === 'epub') return;
-
   const prevMode = state.mode;
   state.mode = mode;
 
@@ -456,11 +638,9 @@ function setMode(mode) {
   const sidebar         = document.getElementById('sidebar');
 
   if (mode === 'read') {
-    // Flush editor content before switching — only if coming from edit mode
     if (prevMode === 'edit' && editor) {
       state.content = editor.value;
-      // Auto-save to disk when leaving edit mode
-      if (state.isNative && state.currentPath && state.contentType !== 'epub' && state.dirty) {
+      if (state.isNative && state.currentPath && state.dirty) {
         sendNative('save');
       }
     }
@@ -480,13 +660,8 @@ function setMode(mode) {
     btnRead.classList.remove('active');
     btnEdit.classList.add('active');
 
-    // Populate textarea with raw content
     editor.value = state.content;
-
-    // Render initial preview
     renderPreview();
-
-    // Focus editor
     editor.focus();
   }
 }
@@ -645,7 +820,7 @@ function reloadFile() {
 function openFileBrowser() {
   const input = document.createElement('input');
   input.type   = 'file';
-  input.accept = '.md,.txt,.epub,text/markdown,text/plain,application/epub+zip';
+  input.accept = '.md,.txt,text/markdown,text/plain';
 
   input.onchange = (e) => {
     const file = e.target.files[0];
@@ -697,7 +872,6 @@ function setupKeyboard() {
 
       case 's':
         e.preventDefault();
-        // Sync editor content to state before saving
         if (state.mode === 'edit') {
           const editor = document.getElementById('editor');
           if (editor) state.content = editor.value;
@@ -716,9 +890,7 @@ function setupKeyboard() {
 
       case 'e':
         e.preventDefault();
-        if (state.contentType !== 'epub') {
-          setMode(state.mode === 'read' ? 'edit' : 'read');
-        }
+        setMode(state.mode === 'read' ? 'edit' : 'read');
         break;
 
       case '=':
@@ -744,18 +916,78 @@ function setupKeyboard() {
 }
 
 /* ============================================================
+   Scrollspy & Throttle
+   ============================================================ */
+let currentActiveIndex = -1;
+
+function setupScrollspy() {
+  const reader = document.getElementById('reader');
+  if (!reader) return;
+
+  reader.addEventListener('scroll', throttle(() => {
+    if (state.mode !== 'read') return;
+    
+    const article = document.getElementById('article');
+    if (!article || reader.classList.contains('is-welcome')) return;
+
+    const headings = Array.from(article.querySelectorAll('h1, h2, h3, h4, .block-heading'))
+      .filter(heading => heading.textContent.trim());
+    if (headings.length === 0) return;
+
+    let activeIndex = 0;
+    const scrollTolerance = 120; // 顶栏高度 + 微调值
+
+    for (let i = 0; i < headings.length; i++) {
+      const rect = headings[i].getBoundingClientRect();
+      if (rect.top <= scrollTolerance) {
+        activeIndex = i;
+      } else {
+        if (i > 0) {
+          activeIndex = i - 1;
+        }
+        break;
+      }
+    }
+
+    if (activeIndex !== currentActiveIndex) {
+      currentActiveIndex = activeIndex;
+      const tocPanel = document.getElementById('tocPanel');
+      if (tocPanel) {
+        const tocItems = tocPanel.querySelectorAll('.toc-item');
+        tocItems.forEach((item, index) => {
+          const isActive = index === activeIndex;
+          item.classList.toggle('active', isActive);
+          if (isActive) {
+            item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        });
+      }
+    }
+  }, 100));
+}
+
+function throttle(fn, delay) {
+  let lastTime = 0;
+  return function (...args) {
+    const now = Date.now();
+    if (now - lastTime >= delay) {
+      fn.apply(this, args);
+      lastTime = now;
+    }
+  };
+}
+
+/* ============================================================
    appHost API — called by native layer
    ============================================================ */
 window.appHost = {
-  async receiveDocument({ path, name, type, content, data }) {
+  async receiveDocument({ path, name, content }) {
     state.currentPath  = path;
     state.currentName  = name;
-    state.contentType  = (type === 'epub') ? 'epub' : 'text';
 
     const fileNameEl = document.getElementById('fileName');
     const copyBtn = document.getElementById('pathCopyBtn');
 
-    // Normalize path: ensure leading /, no trailing /
     const displayPath = normalizePath(path);
     state.currentPath = displayPath || path;
 
@@ -765,19 +997,7 @@ window.appHost = {
     }
     if (copyBtn) copyBtn.style.display = displayPath ? '' : 'none';
 
-    if (type === 'epub' && data) {
-      // Show loading state
-      const article = document.getElementById('article');
-      article.innerHTML = '<p style="color:var(--text-dim);padding:80px 40px;">正在解析 EPUB…</p>';
-
-      try {
-        state.content = await parseEpub(data);
-      } catch (err) {
-        state.content = `<p style="color:var(--accent)">EPUB 解析失败：${err.message}</p>`;
-      }
-    } else {
-      state.content = content || '';
-    }
+    state.content = content || '';
 
     setDirty(false);
     setMode('read');
@@ -807,13 +1027,15 @@ window.appHost = {
       const editor = document.getElementById('editor');
       if (editor) state.content = editor.value;
     }
-    return state.contentType === 'epub' ? '' : state.content;
+    return state.content;
   },
 
   toggleEditMode() {
-    // Don't allow editing EPUB files
-    if (state.contentType === 'epub') return;
     setMode(state.mode === 'read' ? 'edit' : 'read');
+  },
+
+  receivePlantumlResult({ id, svg, error }) {
+    updatePumlResult(id, svg, error);
   },
 
   zoomIn()    { zoomLevel = Math.min(200, zoomLevel + 10); applyZoom(); },
@@ -830,9 +1052,18 @@ window.appHost = {
    ============================================================ */
 document.addEventListener('DOMContentLoaded', () => {
   configureMarked();
+  
+  // Configure Mermaid theme before initial settings (which render)
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: state.theme === 'dark' ? 'dark' : 'default',
+      securityLevel: 'loose'
+    });
+  }
+
   applyInitialSettings();
 
-  // Set up editor live preview with debounce
   const editor = document.getElementById('editor');
   if (editor) {
     const debouncedPreview = debounce(() => {
@@ -848,8 +1079,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   setupKeyboard();
+  setupScrollspy();
 
-  // Path copy — native bridge first, then browser clipboard fallbacks.
   async function copyPathToClipboard() {
     const path = state.currentPath;
     if (!path) return;
@@ -895,6 +1126,13 @@ document.addEventListener('DOMContentLoaded', () => {
     setTocNumbered(state.tocNumbered, false);
   }
 
-  // Tell native layer the web view is ready
+  // Populate inputs in settings panel on load
+  const pumlLocalCheck = document.getElementById('pumlLocal');
+  if (pumlLocalCheck) pumlLocalCheck.checked = state.pumlLocal;
+  const pumlJarInput = document.getElementById('pumlJarPath');
+  if (pumlJarInput) pumlJarInput.value = state.pumlJarPath;
+  const pumlJavaInput = document.getElementById('pumlJavaPath');
+  if (pumlJavaInput) pumlJavaInput.value = state.pumlJavaPath;
+
   sendNative('ready');
 });
