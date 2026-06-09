@@ -292,7 +292,7 @@
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
       NSTask *task = [[NSTask alloc] init];
       task.launchPath = finalJavaPath;
-      task.arguments = @[@"-jar", jarPath, @"-pipe", @"-tsvg"];
+      task.arguments = @[@"-Djava.awt.headless=true", @"-jar", jarPath, @"-pipe", @"-tsvg"];
 
       NSPipe *inPipe  = [NSPipe pipe];
       NSPipe *outPipe = [NSPipe pipe];
