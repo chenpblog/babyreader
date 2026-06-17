@@ -1395,3 +1395,205 @@ body.immersive.toc-open .reader {
   border-bottom: none;
 }
 
+/* ============================================================
+   Search & Replace Widget Styles
+   ============================================================ */
+.search-widget {
+  position: fixed;
+  top: calc(var(--topbar-h) + 12px);
+  width: 320px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 10px 12px;
+  z-index: 150;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: widgetSlideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  font-family: var(--font-sans);
+  transition: right 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-widget.mode-read {
+  right: 20px;
+}
+
+.search-widget.mode-edit {
+  right: calc(50% + 20px);
+}
+
+.search-widget.mode-read .toggle-replace-btn {
+  display: none;
+}
+
+@keyframes widgetSlideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-row.replace-row {
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+.search-input-wrapper {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-wrapper input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  padding: 6px 45px 6px 10px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.search-input-wrapper input:focus {
+  border-color: var(--accent);
+}
+
+.search-counter {
+  position: absolute;
+  right: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  pointer-events: none;
+  user-select: none;
+}
+
+.search-nav-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.search-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  outline: none;
+}
+
+.search-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+
+.search-btn:active {
+  transform: scale(0.95);
+}
+
+.toggle-replace-btn {
+  color: var(--text-dim);
+}
+
+.toggle-replace-btn.expanded svg {
+  transform: rotate(90deg);
+}
+
+.toggle-replace-btn svg {
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.search-action-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.search-action-btn {
+  background: var(--surface-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  outline: none;
+  white-space: nowrap;
+}
+
+.search-action-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(218, 119, 86, 0.08);
+}
+
+.search-action-btn:active {
+  transform: scale(0.96);
+}
+
+/* Highlights — maximally visible across all containers and themes */
+mark.search-highlight {
+  background-color: rgba(218, 119, 86, 0.65) !important;
+  color: inherit !important;
+  border-radius: 2px;
+  padding: 0 2px;
+  /* Solid orange underline as a reliable secondary indicator */
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  /* Outline for code block context */
+  outline: 1.5px solid rgba(218, 119, 86, 0.85);
+  outline-offset: 1px;
+}
+
+/* Force override for inline code / pre code text */
+.article code mark.search-highlight,
+.article pre code mark.search-highlight,
+.preview-pane code mark.search-highlight,
+.preview-pane pre code mark.search-highlight {
+  background-color: rgba(218, 119, 86, 0.75) !important;
+  outline: 2px solid var(--accent) !important;
+}
+
+mark.search-highlight.active-highlight {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+  text-decoration-color: #fff;
+  outline: 2px solid var(--accent) !important;
+  box-shadow: 0 0 0 3px rgba(218, 119, 86, 0.35);
+}
+
+.article code mark.search-highlight.active-highlight,
+.article pre code mark.search-highlight.active-highlight {
+  background-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+.editor::selection {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+

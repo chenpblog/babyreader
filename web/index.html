@@ -113,6 +113,52 @@
     </div>
   </div>
 
+  <!-- Search/Replace Widget -->
+  <div class="search-widget" id="searchWidget" style="display: none;">
+    <!-- Find Row -->
+    <div class="search-row">
+      <button class="search-btn toggle-replace-btn" id="searchToggleReplace" title="切换替换面板">
+        <svg id="searchToggleReplaceIcon" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="9 18 15 12 9 6"></polyline>
+        </svg>
+      </button>
+      <div class="search-input-wrapper">
+        <input type="text" id="searchInput" placeholder="查找" autocomplete="off" spellcheck="false">
+        <span class="search-counter" id="searchCounter">0/0</span>
+      </div>
+      <div class="search-nav-buttons">
+        <button class="search-btn" id="searchPrevBtn" title="上一个 (Shift+Enter)">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="19" x2="12" y2="5"></line>
+            <polyline points="5 12 12 5 19 12"></polyline>
+          </svg>
+        </button>
+        <button class="search-btn" id="searchNextBtn" title="下一个 (Enter)">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <polyline points="19 12 12 19 5 12"></polyline>
+          </svg>
+        </button>
+        <button class="search-btn" id="searchCloseBtn" title="关闭 (Esc)">
+          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <!-- Replace Row -->
+    <div class="search-row replace-row" id="replaceRow" style="display: none;">
+      <div class="search-input-wrapper">
+        <input type="text" id="replaceInput" placeholder="替换" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="search-action-buttons">
+        <button class="search-action-btn" id="replaceBtn" title="替换当前匹配项">替换</button>
+        <button class="search-action-btn" id="replaceAllBtn" title="替换所有匹配项">全部替换</button>
+      </div>
+    </div>
+  </div>
+
   <script src="lib/marked.min.js"></script>
   <script src="lib/highlight.min.js"></script>
   <script src="lib/katex.min.js"></script>

@@ -664,6 +664,15 @@ function setMode(mode) {
     renderPreview();
     editor.focus();
   }
+
+  // Handle active search transition when switching modes
+  if (typeof searchState !== 'undefined' && searchState.isOpen) {
+    clearSearchEffects();
+    searchState.mode = mode;
+    setTimeout(() => {
+      performSearch();
+    }, 100);
+  }
 }
 
 /* ============================================================
@@ -855,12 +864,38 @@ function saveFileBrowser() {
    ============================================================ */
 function setupKeyboard() {
   document.addEventListener('keydown', (e) => {
+    // Global Esc listener to close search widget
+    if (e.key === 'Escape' && typeof searchState !== 'undefined' && searchState.isOpen) {
+      e.preventDefault();
+      toggleSearchWidget(false);
+      return;
+    }
+
+    // Global F3 listener to navigate search
+    if (e.key === 'F3' && typeof searchState !== 'undefined' && searchState.isOpen) {
+      e.preventDefault();
+      navigateSearch(e.shiftKey ? 'prev' : 'next', true);
+      return;
+    }
+
     const isMac = navigator.platform.toUpperCase().includes('MAC');
     const mod   = isMac ? e.metaKey : e.ctrlKey;
 
     if (!mod) return;
 
     switch (e.key.toLowerCase()) {
+      case 'g':
+        if (typeof searchState !== 'undefined' && searchState.isOpen) {
+          e.preventDefault();
+          navigateSearch(e.shiftKey ? 'prev' : 'next', true);
+        }
+        break;
+
+      case 'f':
+        e.preventDefault();
+        toggleSearchWidget();
+        break;
+
       case 'o':
         e.preventDefault();
         if (state.isNative) {
@@ -914,6 +949,476 @@ function setupKeyboard() {
     }
   });
 }
+
+/* ============================================================
+   Search & Replace Functionality
+   ============================================================ */
+
+const searchState = {
+  isOpen: false,
+  query: '',
+  replacement: '',
+  showReplace: false,
+  matches: [],
+  currentIndex: -1,
+  mode: 'read'
+};
+
+function toggleSearchWidget(forceState) {
+  const widget = document.getElementById('searchWidget');
+  const searchInput = document.getElementById('searchInput');
+  if (!widget) return;
+
+  const nextState = forceState !== undefined ? forceState : !searchState.isOpen;
+
+  if (nextState) {
+    if (searchState.isOpen && forceState === undefined) {
+      if (searchInput) {
+        searchInput.focus();
+        searchInput.select();
+      }
+      return;
+    }
+
+    widget.style.display = 'flex';
+    searchState.isOpen = true;
+    searchState.mode = state.mode;
+
+    // Toggle layout classes based on mode
+    widget.classList.toggle('mode-read', state.mode === 'read');
+    widget.classList.toggle('mode-edit', state.mode === 'edit');
+
+    // Force close replace row in read mode
+    if (state.mode === 'read') {
+      const replaceRow = document.getElementById('replaceRow');
+      const toggleBtn = document.getElementById('searchToggleReplace');
+      if (replaceRow) replaceRow.style.display = 'none';
+      if (toggleBtn) toggleBtn.classList.remove('expanded');
+      searchState.showReplace = false;
+    }
+    
+    if (searchInput) {
+      searchInput.focus();
+      searchInput.select();
+    }
+    performSearch();
+  } else {
+    widget.style.display = 'none';
+    searchState.isOpen = false;
+    clearSearchEffects();
+  }
+}
+
+function clearSearchEffects() {
+  const article = document.getElementById('article');
+  const preview = document.getElementById('preview');
+  clearHighlights(article);
+  clearHighlights(preview);
+
+  searchState.matches = [];
+  searchState.currentIndex = -1;
+  const counter = document.getElementById('searchCounter');
+  if (counter) counter.textContent = '0/0';
+}
+
+function performSearch(keepInputFocus) {
+  clearSearchEffects();
+  const searchInput = document.getElementById('searchInput');
+  if (!searchInput) return;
+
+  const query = searchInput.value;
+  if (!query) return;
+
+  searchState.query = query;
+  searchState.mode = state.mode;
+
+  if (searchState.mode === 'read') {
+    const article = document.getElementById('article');
+    if (article) {
+      searchState.matches = highlightTextNodes(article, query);
+    }
+  } else if (searchState.mode === 'edit') {
+    const editor = document.getElementById('editor');
+    if (editor) {
+      const text = editor.value;
+      const matches = [];
+      let pos = 0;
+      const lowerText = text.toLowerCase();
+      const lowerQuery = query.toLowerCase();
+      while ((pos = lowerText.indexOf(lowerQuery, pos)) !== -1) {
+        matches.push({ start: pos, end: pos + query.length });
+        pos += query.length || 1;
+      }
+      searchState.matches = matches;
+    }
+  }
+
+  const total = searchState.matches.length;
+  if (total > 0) {
+    searchState.currentIndex = 0;
+    selectActiveMatch(keepInputFocus);
+  } else {
+    searchState.currentIndex = -1;
+    const counter = document.getElementById('searchCounter');
+    if (counter) counter.textContent = '0/0';
+  }
+}
+
+function navigateSearch(direction, keepFocus) {
+  // If in edit mode, recalculate matches dynamically to handle any user edits
+  if (searchState.mode === 'edit') {
+    const editor = document.getElementById('editor');
+    const query = searchState.query;
+    if (editor && query) {
+      const text = editor.value;
+      const matches = [];
+      let pos = 0;
+      const lowerText = text.toLowerCase();
+      const lowerQuery = query.toLowerCase();
+      while ((pos = lowerText.indexOf(lowerQuery, pos)) !== -1) {
+        matches.push({ start: pos, end: pos + query.length });
+        pos += query.length || 1;
+      }
+      searchState.matches = matches;
+      
+      if (matches.length === 0) {
+        searchState.currentIndex = -1;
+        const counter = document.getElementById('searchCounter');
+        if (counter) counter.textContent = '0/0';
+        return;
+      }
+      
+      if (searchState.currentIndex >= matches.length) {
+        searchState.currentIndex = 0;
+      }
+    }
+  }
+
+  const total = searchState.matches.length;
+  if (total === 0) return;
+
+  if (searchState.mode === 'read') {
+    const currentMark = searchState.matches[searchState.currentIndex];
+    if (currentMark) currentMark.classList.remove('active-highlight');
+  }
+
+  if (direction === 'next') {
+    searchState.currentIndex = (searchState.currentIndex + 1) % total;
+  } else {
+    searchState.currentIndex = (searchState.currentIndex - 1 + total) % total;
+  }
+
+  selectActiveMatch(keepFocus);
+}
+
+function selectActiveMatch(keepInputFocus) {
+  const total = searchState.matches.length;
+  if (total === 0 || searchState.currentIndex === -1) return;
+
+  const index = searchState.currentIndex;
+  const counter = document.getElementById('searchCounter');
+  if (counter) counter.textContent = `${index + 1}/${total}`;
+
+  if (searchState.mode === 'read') {
+    const activeMark = searchState.matches[index];
+    if (activeMark) {
+      activeMark.classList.add('active-highlight');
+      
+      // 1. Native scroll
+      activeMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // 2. Manual scroll fallback for WKWebView
+      const reader = document.getElementById('reader');
+      if (reader) {
+        const readerRect = reader.getBoundingClientRect();
+        const markRect = activeMark.getBoundingClientRect();
+        const relativeTop = markRect.top - readerRect.top + reader.scrollTop;
+        reader.scrollTo({
+          top: relativeTop - (reader.clientHeight / 2),
+          behavior: 'smooth'
+        });
+      }
+    }
+  } else if (searchState.mode === 'edit') {
+    const editor = document.getElementById('editor');
+    const match = searchState.matches[index];
+    if (editor && match) {
+      if (keepInputFocus) {
+        // Triggered by typing: set the selection range without stealing focus,
+        // then restore focus to searchInput so user can continue typing.
+        editor.setSelectionRange(match.start, match.end);
+        scrollTextareaToSelection(editor, match.start);
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.focus();
+      } else {
+        // Triggered by Next/Prev/Enter: keep editor focused so the
+        // textarea selection highlight (blue) is clearly visible.
+        editor.focus();
+        editor.setSelectionRange(match.start, match.end);
+        scrollTextareaToSelection(editor, match.start);
+      }
+    }
+  }
+}
+
+function replaceCurrentMatch() {
+  const query = searchState.query;
+  if (!query) return;
+  
+  const replaceInput = document.getElementById('replaceInput');
+  const replacement = replaceInput ? replaceInput.value : '';
+
+  if (searchState.mode === 'edit') {
+    const editor = document.getElementById('editor');
+    if (!editor || searchState.currentIndex === -1 || searchState.matches.length === 0) return;
+
+    const match = searchState.matches[searchState.currentIndex];
+    const text = editor.value;
+    const before = text.slice(0, match.start);
+    const after = text.slice(match.end);
+    
+    editor.value = before + replacement + after;
+    state.content = editor.value;
+    setDirty(true);
+    
+    renderPreview();
+    
+    const oldIndex = searchState.currentIndex;
+    performSearch();
+    
+    if (searchState.matches.length > 0) {
+      searchState.currentIndex = oldIndex < searchState.matches.length ? oldIndex : 0;
+      selectActiveMatch();
+    }
+  } else if (searchState.mode === 'read') {
+    if (searchState.currentIndex === -1 || searchState.matches.length === 0) return;
+    
+    const index = searchState.currentIndex;
+    state.content = replaceNthOccurrence(state.content, query, replacement, index);
+    setDirty(true);
+    
+    renderArticle();
+    performSearch();
+    
+    if (searchState.matches.length > 0) {
+      searchState.currentIndex = index < searchState.matches.length ? index : 0;
+      selectActiveMatch();
+    }
+  }
+}
+
+function replaceNthOccurrence(str, query, replacement, n) {
+  let index = -1;
+  for (let i = 0; i <= n; i++) {
+    index = str.toLowerCase().indexOf(query.toLowerCase(), index + 1);
+    if (index === -1) break;
+  }
+  if (index !== -1) {
+    return str.substring(0, index) + replacement + str.substring(index + query.length);
+  }
+  return str;
+}
+
+function replaceAllMatches() {
+  const query = searchState.query;
+  if (!query) return;
+
+  const replaceInput = document.getElementById('replaceInput');
+  const replacement = replaceInput ? replaceInput.value : '';
+
+  if (searchState.mode === 'edit') {
+    const editor = document.getElementById('editor');
+    if (!editor) return;
+    
+    const regex = new RegExp(escapeRegExp(query), 'gi');
+    editor.value = editor.value.replace(regex, replacement);
+    state.content = editor.value;
+    setDirty(true);
+    
+    renderPreview();
+    performSearch();
+  } else if (searchState.mode === 'read') {
+    const regex = new RegExp(escapeRegExp(query), 'gi');
+    state.content = state.content.replace(regex, replacement);
+    setDirty(true);
+    
+    renderArticle();
+    performSearch();
+  }
+}
+
+function toggleReplaceRow() {
+  const replaceRow = document.getElementById('replaceRow');
+  const toggleBtn = document.getElementById('searchToggleReplace');
+  if (!replaceRow) return;
+
+  const isHidden = replaceRow.style.display === 'none';
+  replaceRow.style.display = isHidden ? 'flex' : 'none';
+  searchState.showReplace = isHidden;
+
+  if (isHidden) {
+    toggleBtn.classList.add('expanded');
+  } else {
+    toggleBtn.classList.remove('expanded');
+  }
+}
+
+function scrollTextareaToSelection(editor, start) {
+  const text = editor.value;
+  const lines = text.slice(0, start).split('\n');
+  const lineCount = lines.length;
+  const style = window.getComputedStyle(editor);
+  const lineHeight = parseInt(style.lineHeight) || 24;
+  
+  const scrollTop = (lineCount - 5) * lineHeight;
+  editor.scrollTop = Math.max(0, scrollTop);
+}
+
+function highlightTextNodes(container, query) {
+  if (!query) return [];
+  const matches = [];
+  const regex = new RegExp(escapeRegExp(query), 'gi');
+
+  function walk(node) {
+    // Check if element is a script, style, or PlantUML/Mermaid/search-highlight container
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'script' || tag === 'style' || node.closest('.puml-svg-container') || node.closest('.mermaid-svg-container') || node.classList.contains('search-highlight')) {
+        return;
+      }
+      // Recurse on children
+      let child = node.firstChild;
+      while (child) {
+        const next = child.nextSibling;
+        walk(child);
+        child = next;
+      }
+    } else if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.nodeValue;
+      const parent = node.parentElement;
+      if (!parent) return;
+
+      let match;
+      const replacements = [];
+      regex.lastIndex = 0;
+      while ((match = regex.exec(text)) !== null) {
+        if (match[0].length === 0) break;
+        replacements.push({
+          start: match.index,
+          end: regex.lastIndex,
+          text: match[0]
+        });
+      }
+
+      if (replacements.length > 0) {
+        const fragment = document.createDocumentFragment();
+        let lastIndex = 0;
+        for (const rep of replacements) {
+          if (rep.start > lastIndex) {
+            fragment.appendChild(document.createTextNode(text.slice(lastIndex, rep.start)));
+          }
+          const mark = document.createElement('mark');
+          mark.className = 'search-highlight';
+          mark.textContent = rep.text;
+          fragment.appendChild(mark);
+          matches.push(mark);
+          lastIndex = rep.end;
+        }
+        if (lastIndex < text.length) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+        parent.replaceChild(fragment, node);
+      }
+    }
+  }
+
+  walk(container);
+  return matches;
+}
+
+function clearHighlights(container) {
+  if (!container) return;
+  const marks = container.querySelectorAll('mark.search-highlight');
+  marks.forEach(mark => {
+    const parent = mark.parentElement;
+    if (parent) {
+      parent.replaceChild(document.createTextNode(mark.textContent), mark);
+    }
+  });
+  container.normalize();
+}
+
+function escapeRegExp(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function setupSearchEvents() {
+  const searchInput = document.getElementById('searchInput');
+  const replaceInput = document.getElementById('replaceInput');
+  const searchToggleReplace = document.getElementById('searchToggleReplace');
+  const searchPrevBtn = document.getElementById('searchPrevBtn');
+  const searchNextBtn = document.getElementById('searchNextBtn');
+  const searchCloseBtn = document.getElementById('searchCloseBtn');
+  const replaceBtn = document.getElementById('replaceBtn');
+  const replaceAllBtn = document.getElementById('replaceAllBtn');
+
+  if (searchInput) {
+    searchInput.addEventListener('input', debounce(() => {
+      // Pass true: user is typing, keep focus on searchInput after search
+      performSearch(true);
+    }, 150));
+
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          navigateSearch('prev');
+        } else {
+          navigateSearch('next');
+        }
+      }
+    });
+  }
+
+  if (replaceInput) {
+    replaceInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        replaceCurrentMatch();
+      }
+    });
+  }
+
+  if (searchToggleReplace) {
+    searchToggleReplace.addEventListener('click', toggleReplaceRow);
+  }
+
+  if (searchPrevBtn) {
+    // preventDefault on mousedown prevents the button from stealing focus from the editor,
+    // so the editor's selection highlight remains visible in edit mode.
+    searchPrevBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    searchPrevBtn.addEventListener('click', () => navigateSearch('prev'));
+  }
+
+  if (searchNextBtn) {
+    searchNextBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    searchNextBtn.addEventListener('click', () => navigateSearch('next'));
+  }
+
+  if (searchCloseBtn) {
+    searchCloseBtn.addEventListener('click', () => toggleSearchWidget(false));
+  }
+
+  if (replaceBtn) {
+    replaceBtn.addEventListener('click', replaceCurrentMatch);
+  }
+
+  if (replaceAllBtn) {
+    replaceAllBtn.addEventListener('click', replaceAllMatches);
+  }
+}
+
+/* ============================================================
 
 /* ============================================================
    Scrollspy & Throttle
@@ -998,6 +1503,11 @@ window.appHost = {
     if (copyBtn) copyBtn.style.display = displayPath ? '' : 'none';
 
     state.content = content || '';
+
+    // Close search widget on loading a new document
+    if (typeof searchState !== 'undefined' && searchState.isOpen) {
+      toggleSearchWidget(false);
+    }
 
     setDirty(false);
     setMode('read');
@@ -1133,6 +1643,9 @@ document.addEventListener('DOMContentLoaded', () => {
   if (pumlJarInput) pumlJarInput.value = state.pumlJarPath;
   const pumlJavaInput = document.getElementById('pumlJavaPath');
   if (pumlJavaInput) pumlJavaInput.value = state.pumlJavaPath;
+
+  // Initialize Search & Replace event listeners
+  setupSearchEvents();
 
   sendNative('ready');
 });
